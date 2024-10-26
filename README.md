@@ -54,6 +54,14 @@ flask/
 
 2. 打开浏览器，访问 `http://127.0.0.1:port` 查看 `Grounding 数据过滤` 界面。其中`port`为参数中你指定的端口
 
+## 示例界面
+
+### Generate 数据过滤界面示例
+![Generate 数据过滤示例](assets/generate.png)
+
+### Grounding 数据预过滤界面示例
+![Grounding 数据预过滤示例](assets/Grounding.png)
+
 ## 注意事项
 
 - 见浏览器界面中的提示，按照提示进行数据过滤操作。
