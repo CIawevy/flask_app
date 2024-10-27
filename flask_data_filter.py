@@ -95,10 +95,13 @@ def index():
 
 
 
+
+
 @app.route('/filter/<da_n>/<ins_id>/<edit_id>', methods=['GET', 'POST'])
 def filter(da_n,ins_id, edit_id):
     session.setdefault('disable_skip_image', False)
     session.setdefault('disable_skip_instance', False)
+
     if request.method == 'POST':
         # 获取用户的决定
         decision = request.form['decision']
@@ -108,8 +111,10 @@ def filter(da_n,ins_id, edit_id):
             total_edits_in_image = sum(num_dict[da_n].values())
             ori_data_stat['processed_edit_results'] += total_edits_in_image # 增加跳过的所有编辑
             ori_data_stat[da_n]['status'] = 'completed'  # 标记该图片为已完成
-            undo_stack.append(('skip_img', da_n,ins_id,edit_id,total_edits_in_image))  # 记录操作历史
             session['disable_skip_image'] = False
+            undo_stack.append(('skip_img', da_n,ins_id,edit_id,session['disable_skip_image'],session['disable_skip_instance'],total_edits_in_image))  # 记录操作历史
+
+
 
 
         elif decision == 'skip_instance':
@@ -119,14 +124,15 @@ def filter(da_n,ins_id, edit_id):
             ori_data_stat[da_n]['processed_ins'][ins_id]['status'] = 'completed'  # 标记实例为已处理
             if all(v['status'] == 'completed' for k, v in ori_data_stat[da_n]['processed_ins'].items()):
                 ori_data_stat[da_n]['status'] = 'completed'  # 标记整个图像为完成
-            undo_stack.append(('skip_instance', da_n, ins_id,edit_id,total_edits_in_instance))
             session['disable_skip_instance'] = False
+            undo_stack.append(('skip_instance', da_n, ins_id,edit_id,session['disable_skip_image'],session['disable_skip_instance'],total_edits_in_instance))
+
 
 
         elif decision == 'keep':
             # 保留该实例的编辑结果到 new_data
             session['disable_skip_image'] = True
-            session['disable_skip_instance'] = True
+            session['disable_skip_instance']= True
 
             if da_n not in new_data:
                 new_data[da_n] = {'instances': {}}
@@ -144,32 +150,37 @@ def filter(da_n,ins_id, edit_id):
             if len(ori_data_stat[da_n]['processed_ins'][ins_id]['processed_edit']) == num_dict[da_n][ins_id]:
                 ori_data_stat[da_n]['processed_ins'][ins_id]['status'] = 'completed'  # 标记实例筛选完成
                 session['disable_skip_instance'] = False
+
             if all(v['status'] == 'completed' for k, v in ori_data_stat[da_n]['processed_ins'].items()):
                 ori_data_stat[da_n]['status'] = 'completed'  # 标记图像筛选完成
                 session['disable_skip_image'] = False
 
+
             # 记录操作历史并保存
-            undo_stack.append(('keep', da_n, ins_id, edit_id, 1))
+            undo_stack.append(('keep', da_n, ins_id, edit_id,session['disable_skip_image'],session['disable_skip_instance'], 1))
 
         elif decision == 'skip':
-            # 跳过当前实例的编辑结果并保存撤回记录
-            undo_stack.append(('skip', da_n, ins_id, edit_id,1))
             # 更新该实例的编辑状态
             ori_data_stat['processed_edit_results'] += 1  # 增加已处理的编辑结果计数
             ori_data_stat[da_n]['processed_ins'][ins_id]['processed_edit'].append(edit_id)
             if len(ori_data_stat[da_n]['processed_ins'][ins_id]['processed_edit']) == num_dict[da_n][ins_id]:
                 ori_data_stat[da_n]['processed_ins'][ins_id]['status'] = 'completed'  # 标记实例筛选完成
                 session['disable_skip_instance'] = False
+
             if all(v['status'] == 'completed' for k, v in ori_data_stat[da_n]['processed_ins'].items()):
                 ori_data_stat[da_n]['status'] = 'completed'  # 标记图像筛选完成
                 session['disable_skip_image'] = False
+            # 跳过当前实例的编辑结果并保存撤回记录
+            undo_stack.append(('skip', da_n, ins_id, edit_id,session['disable_skip_image'],session['disable_skip_instance'],1))
 
 
         elif decision == 'undo':
             # 撤回上一次操作
             if undo_stack:
                 last_action = undo_stack.pop()
-                action_type, undo_da_n, undo_ins_id, undo_edit_id, edit_num = last_action  # *undo_edit_id allows for flexible number of items
+                action_type, undo_da_n, undo_ins_id, undo_edit_id,button_stat_img,button_stat_ins, edit_num = last_action  # *undo_edit_id allows for flexible number of items
+                session['disable_skip_image'] = button_stat_img
+                session['disable_skip_instance'] = button_stat_ins
                 ori_data_stat['processed_edit_results'] -= edit_num  # 减少已处理的编辑结果计数
                 if action_type == 'keep':
                     # 撤回“保留”操作
@@ -188,27 +199,25 @@ def filter(da_n,ins_id, edit_id):
                         ori_data_stat[undo_da_n]['processed_ins'][undo_ins_id]['processed_edit'].remove(undo_edit_id)
                         ori_data_stat[undo_da_n]['processed_ins'][undo_ins_id]['status'] = 'unprocessed'
                         ori_data_stat[undo_da_n]['status'] = 'unprocessed'
-                        session['disable_skip_instance'] = True
-                        session['disable_skip_img'] = True
+
 
                 elif action_type == 'skip':
                     if undo_edit_id in ori_data_stat[undo_da_n]['processed_ins'][undo_ins_id]['processed_edit']:
                         ori_data_stat[undo_da_n]['processed_ins'][undo_ins_id]['processed_edit'].remove(undo_edit_id)
                         ori_data_stat[undo_da_n]['processed_ins'][undo_ins_id]['status'] = 'unprocessed'
                         ori_data_stat[undo_da_n]['status'] = 'unprocessed'
-                        session['disable_skip_instance'] = True
-                        session['disable_skip_img'] = True
+
 
                 elif action_type == 'skip_instance':
                     # 撤回“跳过实例”，将整个实例标记为未处理
                     ori_data_stat[da_n]['processed_ins'][ins_id]['status'] = 'unprocessed'
                     ori_data_stat[undo_da_n]['status'] = 'unprocessed'
-                    session['disable_skip_instance'] = False
+
 
                 elif action_type == 'skip_img':
                     # 撤回“跳过图片”，将图片标记为未处理
                     ori_data_stat[undo_da_n]['status'] = 'unprocessed'
-                    session['disable_skip_img'] = False
+
                 # 重定向回撤回的实例或图片
                 save_json_data(new_data, new_data_path)  # 保存新数据
                 save_json_data(ori_data_stat, ori_data_stat_path)  # 保存状态
