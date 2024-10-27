@@ -156,8 +156,10 @@ def filter(da_n,ins_id, edit_id):
             ori_data_stat[da_n]['processed_ins'][ins_id]['processed_edit'].append(edit_id)
             if len(ori_data_stat[da_n]['processed_ins'][ins_id]['processed_edit']) == num_dict[da_n][ins_id]:
                 ori_data_stat[da_n]['processed_ins'][ins_id]['status'] = 'completed'  # 标记实例筛选完成
+                session['disable_skip_instance'] = False
             if all(v['status'] == 'completed' for k, v in ori_data_stat[da_n]['processed_ins'].items()):
                 ori_data_stat[da_n]['status'] = 'completed'  # 标记图像筛选完成
+                session['disable_skip_image'] = False
 
 
         elif decision == 'undo':
@@ -183,12 +185,16 @@ def filter(da_n,ins_id, edit_id):
                         ori_data_stat[undo_da_n]['processed_ins'][undo_ins_id]['processed_edit'].remove(undo_edit_id)
                         ori_data_stat[undo_da_n]['processed_ins'][undo_ins_id]['status'] = 'unprocessed'
                         ori_data_stat[undo_da_n]['status'] = 'unprocessed'
+                        session['disable_skip_instance'] = True
+                        session['disable_skip_img'] = True
 
                 elif action_type == 'skip':
                     if undo_edit_id in ori_data_stat[undo_da_n]['processed_ins'][undo_ins_id]['processed_edit']:
                         ori_data_stat[undo_da_n]['processed_ins'][undo_ins_id]['processed_edit'].remove(undo_edit_id)
                         ori_data_stat[undo_da_n]['processed_ins'][undo_ins_id]['status'] = 'unprocessed'
                         ori_data_stat[undo_da_n]['status'] = 'unprocessed'
+                        session['disable_skip_instance'] = True
+                        session['disable_skip_img'] = True
 
                 elif action_type == 'skip_instance':
                     # 撤回“跳过实例”，将整个实例标记为未处理
