@@ -150,7 +150,7 @@ def filter(da_n,ins_id, edit_id):
 
         elif decision == 'skip':
             # 跳过当前实例的编辑结果并保存撤回记录
-            undo_stack.append(('skip', da_n, ins_id, edit_id))
+            undo_stack.append(('skip', da_n, ins_id, edit_id,1))
             # 更新该实例的编辑状态
             ori_data_stat['processed_edit_results'] += 1  # 增加已处理的编辑结果计数
             ori_data_stat[da_n]['processed_ins'][ins_id]['processed_edit'].append(edit_id)
@@ -159,9 +159,6 @@ def filter(da_n,ins_id, edit_id):
             if all(v['status'] == 'completed' for k, v in ori_data_stat[da_n]['processed_ins'].items()):
                 ori_data_stat[da_n]['status'] = 'completed'  # 标记图像筛选完成
 
-
-            # 记录操作历史并保存
-            undo_stack.append(('keep', da_n, ins_id, edit_id,1))
 
         elif decision == 'undo':
             # 撤回上一次操作
