@@ -119,7 +119,7 @@ def filter(da_n,ins_id, edit_id):
 
         elif decision == 'skip_instance':
             # 如果实例级别不保留，跳过该实例的所有编辑结果
-            total_edits_in_instance = num_dict[da_n][ins_id]
+            total_edits_in_instance = num_dict[da_n][ins_id] - len(ori_data_stat[da_n]['processed_ins'][ins_id]['processed_edit'])
             ori_data_stat['processed_edit_results'] += total_edits_in_instance  # 增加跳过的所有编辑
             ori_data_stat[da_n]['processed_ins'][ins_id]['status'] = 'completed'  # 标记实例为已处理
             if all(v['status'] == 'completed' for k, v in ori_data_stat[da_n]['processed_ins'].items()):
