@@ -124,6 +124,7 @@ def filter(da_n,ins_id, edit_id):
             ori_data_stat[da_n]['processed_ins'][ins_id]['status'] = 'completed'  # 标记实例为已处理
             if all(v['status'] == 'completed' for k, v in ori_data_stat[da_n]['processed_ins'].items()):
                 ori_data_stat[da_n]['status'] = 'completed'  # 标记整个图像为完成
+                session['disable_skip_image'] = False
             session['disable_skip_instance'] = False
             undo_stack.append(('skip_instance', da_n, ins_id,edit_id,session['disable_skip_image'],session['disable_skip_instance'],total_edits_in_instance))
 

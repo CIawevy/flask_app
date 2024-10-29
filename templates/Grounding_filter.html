@@ -153,11 +153,11 @@
     <div class="instructions">
         <h2 class="instructions-title">使用指南：</h2>
         <ul>
-            <li>1. 自动加载数据、记录状态</li>
-            <li>2. 随时停止随时开始，并允许10步以内的撤回</li>
-            <li>3. 点击“Skip”以跳过object_label错误、或者重复以及不适合编辑的实例(非前景、过小、不完整)</li>
+            <li>1. 自动加载数据、记录状态、允许撤回</li>
+            <li>3. 点击“Skip”以跳过label错误、或者重复以及不适合编辑的实例(非前景、过小、大面积缺失)</li>
             <li>4. 点击“Keep”保留该实例</li>
-            <li>5. 使用“Undo Last Action”撤回上一步操作</li>
+            <li>5. 点击“Skip Image”跳过不适合编辑的图片</li>
+            <li>6. 使用“Undo Last Action”撤回上一步操作</li>
         </ul>
     </div>
 
@@ -179,6 +179,8 @@
         <div class="button-container">
             <button type="submit" name="decision" value="keep">Keep</button>
             <button type="submit" name="decision" value="skip">Skip</button>
+              <button type="submit" name="decision" value="skip_img"
+                    {% if disable_skip_image %} disabled {% endif %}>Skip Image</button>
             <button type="submit" name="decision" value="undo">Undo Last Action</button>
         </div>
     </form>

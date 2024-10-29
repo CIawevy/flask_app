@@ -89,10 +89,12 @@ def index():
 
 @app.route('/filter/<da_n>/<mask_id>', methods=['GET', 'POST'])
 def filter(da_n, mask_id):
+    session.setdefault('disable_skip_image', False)
     if request.method == 'POST':
         decision = request.form['decision']
 
         if decision == 'keep':
+            session['disable_skip_image'] = True
             # 保留该 mask 结果到 new_data
             if da_n not in new_data:
                 new_data[da_n] = {'instances': {'mask_path': []}}
@@ -103,9 +105,10 @@ def filter(da_n, mask_id):
             ori_data_stat[da_n]['processed_masks'].append(mask_id)
             if len(ori_data_stat[da_n]['processed_masks']) == num_dict[da_n]:
                 ori_data_stat[da_n]['status'] = 'completed'
+                session['disable_skip_image'] = False
 
             # 记录操作历史
-            undo_stack.append(('keep', da_n, mask_id))
+            undo_stack.append(('keep', da_n, mask_id,session['disable_skip_image'],1))
 
         elif decision == 'skip':
             # 跳过当前 mask 并保存撤回记录
@@ -113,7 +116,17 @@ def filter(da_n, mask_id):
             ori_data_stat[da_n]['processed_masks'].append(mask_id)
             if len(ori_data_stat[da_n]['processed_masks']) == num_dict[da_n]:
                 ori_data_stat[da_n]['status'] = 'completed'
-            undo_stack.append(('skip', da_n, mask_id))
+                session['disable_skip_image'] = False
+            undo_stack.append(('skip', da_n, mask_id,session['disable_skip_image'],1))
+        elif decision == 'skip_img':
+            # 如果图片级别不保留，跳过该图片的所有实例和编辑
+            total_edits_in_image = num_dict[da_n]-len(ori_data_stat[da_n]['processed_ins'])
+            ori_data_stat['processed_edit_results'] += total_edits_in_image  # 增加跳过的所有编辑
+            ori_data_stat[da_n]['status'] = 'completed'  # 标记该图片为已完成
+            session['disable_skip_image'] = False
+            undo_stack.append(('skip_img', da_n, mask_id, session['disable_skip_image'], total_edits_in_image))  # 记录操作历史
+
+
 
 
         elif decision == 'undo':
@@ -124,9 +137,9 @@ def filter(da_n, mask_id):
 
                 last_action = undo_stack.pop()
 
-                action_type, undo_da_n, undo_mask_id = last_action
-
-                ori_data_stat['processed_mask_results'] -= 1
+                action_type, undo_da_n, undo_mask_id,button_stat_img,edit_num = last_action
+                session['disable_skip_image'] = button_stat_img
+                ori_data_stat['processed_mask_results'] -= edit_num
 
                 # 撤回“保留”操作
 
@@ -143,6 +156,7 @@ def filter(da_n, mask_id):
                         ori_data_stat[undo_da_n]['processed_masks'].pop()
 
 
+
                 # 撤回“跳过”操作
 
                 elif action_type == 'skip':
@@ -151,6 +165,7 @@ def filter(da_n, mask_id):
 
                     if ori_data_stat[undo_da_n]['processed_masks'][-1] == undo_mask_id:
                         ori_data_stat[undo_da_n]['processed_masks'].pop()
+
 
                 # 更新状态
 
@@ -190,9 +205,9 @@ if __name__ == '__main__':
 
     # 查找目录中的 JSON 文件路径
     json_path = osp.join(directory, f"packed_data_full_tag_{args.subset_id}.json")
-    new_data_path = osp.join(directory, f'Fil_Grounding_{args.subset_id}.json')
-    undo_stack_path = osp.join(directory, 'Fil_Grounding_undo_stack.json')
-    ori_data_stat_path = osp.join(directory, 'Fil_Grounding_stat.json')
+    new_data_path = osp.join(directory, f'Grounding_edit_data.json')
+    undo_stack_path = osp.join(directory, 'Grounding_undo_stack.json')
+    ori_data_stat_path = osp.join(directory, 'Grounding_stat.json')
 
 
     # 加载数据的通用函数：如果文件不存在则创建空字典并保存
