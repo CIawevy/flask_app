@@ -120,7 +120,7 @@ def filter(da_n, mask_id):
             undo_stack.append(('skip', da_n, mask_id,session['disable_skip_image'],1))
         elif decision == 'skip_img':
             # 如果图片级别不保留，跳过该图片的所有实例和编辑
-            total_edits_in_image = num_dict[da_n]-len(ori_data_stat[da_n]['processed_ins'])
+            total_edits_in_image = num_dict[da_n]-len(ori_data_stat[da_n]['processed_masks'])
             ori_data_stat['processed_edit_results'] += total_edits_in_image  # 增加跳过的所有编辑
             ori_data_stat[da_n]['status'] = 'completed'  # 标记该图片为已完成
             session['disable_skip_image'] = False
