@@ -10,14 +10,18 @@
 ```plaintext
 flask/
 │
-├── templates/                   # 存放 HTML 模板文件
-│   ├── filter.html              # Generate 数据过滤模板
-│   └── Grounding_filter.html    # Grounding 数据预过滤模板（用于掩码过滤任务）
+├── templates/                       # 存放 HTML 模板文件
+│   ├── filter.html                  # Generate 数据过滤模板
+│   ├── Grounding_filter.html        # Grounding 数据预过滤模板（用于掩码过滤任务）
+│   ├── level_selection.html         # 用于选择掩码过滤层级的模板
+│   └── mask_filter.html             # 掩码过滤主界面模板
 │
-├── flask_data_filter.py         # 主 Flask 应用文件，负责 Generate 数据过滤任务
-├── flask_mask_filter.py         # 主 Flask 应用文件，负责 Grounding 数据预过滤任务
-├── flask_filter.sh              # 启动 Generate 数据过滤任务的脚本
-└── flask_filter_pre.sh          # 启动 Grounding 数据预过滤任务的脚本
+├── flask_data_filter.py             # 主 Flask 应用文件，负责 Generate 数据过滤任务
+├── flask_filter.sh                  # 启动 Generate 数据过滤任务的脚本
+├── flask_mask_filter_plus.py        # 扩展功能的 Flask 应用，用于额外的掩码过滤需求
+├── grounding_filter.sh              # 启动 Grounding 数据预过滤任务的脚本
+├── README.md                        # 项目文档说明文件
+└── semantic_sam_filter.sh           # 启动 Semantic SAM 掩码过滤任务的脚本
 ```
 
 ## 使用引导
