@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Mask Filter</title>
+    <style>
+        /* 样式调整 */
+        body {
+            font-family: Arial, sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            margin: 0;
+            padding: 0;
+            min-height: 100vh;
+            background-color: #f4f4f9;
+        }
+        h1 {
+            font-size: 28px;
+            margin: 20px 0;
+        }
+        .level-container {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
+            gap: 40px;
+            margin: 20px 0;
+        }
+        .level-item {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            background-color: #ffffff;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+            width: 400px;
+        }
+        .level-item h2 {
+            font-size: 22px;
+            margin-bottom: 15px;
+        }
+        .image-container {
+            width: 100%;
+            height: 250px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            overflow: hidden;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+        }
+        .image-container img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+        .select-button, .skip-button, .undo-button {
+            padding: 12px 25px;
+            font-size: 18px;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            background-color: #4CAF50;
+            width: 100%;
+            margin-top: 10px;
+        }
+        .progress-container {
+            width: 60%;
+            background-color: #e0e0df;
+            border-radius: 10px;
+            margin: 20px 0;
+        }
+        .progress-bar {
+            width: {{ progress }}%;
+            height: 30px;
+            background-color: #4CAF50;
+            border-radius: 10px;
+            text-align: center;
+            line-height: 30px;
+            color: white;
+            font-size: 16px;
+        }
+        .status-bar {
+            width: 80%;
+            background-color: #fff;
+            padding: 10px;
+            margin-top: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+            text-align: left;
+        }
+        .status-bar h3 {
+            margin-top: 0;
+            font-size: 20px;
+        }
+        .undo-stack-list {
+            font-size: 16px;
+            list-style-type: none;
+            padding-left: 0;
+        }
+        .undo-stack-list li {
+            margin: 5px 0;
+        }
+        .instructions {
+            font-size: 20px;
+            text-align: left;
+            margin-top: 10px;
+            margin-bottom: 20px;
+        }
+        .instructions ul {
+            padding: 0;
+        }
+        .instructions li {
+            list-style: none;
+            line-height: 1.5;
+        }
+    </style>
+</head>
+<body>
+    <h1>Mask Filter</h1>
+    <div class="instructions">
+        <h2>使用指南：</h2>
+        <ul>
+            <li>1. select level 选择合适的分割粒度</li>
+            <li>2. 使用 skip image 跳过不合适的图像</li>
+            <li>3. 使用“Undo Last Action”撤回上一步操作</li>
+        </ul>
+    </div>
+
+    <!-- 进度条 -->
+    <div class="progress-container">
+        <div class="progress-bar">{{ progress }}%</div>
+    </div>
+
+    <div class="level-container">
+        {% for level, image_path in level_images.items() %}
+            <div class="level-item">
+                <h2>{{ level }}</h2>
+                <div class="image-container">
+                    <img src="{{ url_for('serve_image', filename=image_path) }}" alt="{{ level }} Image">
+                </div>
+
+                {% if level != 'Original' %}
+                    <form action="{{ url_for('select_level', da_n=da_n) }}" method="post">
+                        <button type="submit" class="select-button" name="level" value="{{ level }}">level {{ level }}</button>
+                    </form>
+                {% else %}
+                    <form action="{{ url_for('select_level', da_n=da_n) }}" method="post">
+                        <button type="submit" class="skip-button" name="action" value="skip_image">Skip Image</button>
+                    </form>
+                {% endif %}
+            </div>
+        {% endfor %}
+    </div>
+
+    <!-- 将“Undo Last Action”按钮单独放在四个框之外 -->
+    <form action="{{ url_for('select_level', da_n=da_n) }}" method="post" style="margin-top: 20px;">
+        <button type="submit" class="undo-button" name="action" value="undo">Undo Last Action</button>
+    </form>
+
+    <!-- 状态栏展示 undo_stack -->
+    <div class="status-bar">
+        <h3>操作记录 (Undo Stack):</h3>
+        <ul class="undo-stack-list">
+            {% for action in undo_stack %}
+                <li>{{ action }}</li>
+            {% endfor %}
+        </ul>
+    </div>
+</body>
+</html>

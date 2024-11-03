@@ -41,7 +41,7 @@ flask/
 
 2. 打开浏览器，访问 `http://127.0.0.1:port` 查看 `Generate 数据过滤` 界面。其中`port`为参数中你指定的端口
 
-### 启动 Grounding 数据预过滤任务
+### 启动 Grounding 数据预过滤任务(已废弃)
 
 1. 运行程序示例1：
      ```bash
@@ -49,9 +49,18 @@ flask/
    ```
 2. 运行程序示例2(脚本中修改参数)：
    ```bash
-   bash flask_filter_pre.sh
+   bash grounding_filter.sh
    ```
 
+### 启动 Semantic-SAM & RAM++ 数据预过滤任务(Latest)
+
+1. 运行程序示例1：
+     ```bash
+   python flask_mask_filter_plus.py --dir {dataset_basedir} --port {port} --subset_id {subset_id}
+   ```
+2. 运行程序示例2(脚本中修改参数)：
+   ```bash
+   bash semantic_sam_flter.sh
 2. 打开浏览器，访问 `http://127.0.0.1:port` 查看 `Grounding 数据过滤` 界面。其中`port`为参数中你指定的端口
 
 ## 示例界面
@@ -62,10 +71,12 @@ flask/
 ### Grounding 数据预过滤界面示例
 ![Grounding 数据预过滤示例](assets/Grounding.png)
 
+### Semantic-SAM & RAM++ 数据预过滤任务界面示例
+![Semantic-SAM & RAM++ 数据预过滤任务示例](assets/ssm_ram_plus.png)
 ## 注意事项
 
 - 见浏览器界面中的提示，按照提示进行数据过滤操作。
-- 目前仅支持服务器用户在8706上运行程序
+- 目前仅支持服务器用户在8706上运行程序(working on it!)
 
   
 
