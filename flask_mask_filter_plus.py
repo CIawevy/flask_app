@@ -155,7 +155,7 @@ def filter(da_n, mask_id,level):
             # 保留该 mask 结果到 new_data
             if da_n not in new_data:
                 new_data[da_n] = {'instances': {'mask_path': []}}
-            new_data[da_n]['instances']['mask_path'].append(data[da_n][level]['instances']['mask_path'][int(mask_id)])
+            new_data[da_n]['instances']['mask_path'].append(data[da_n]['instances'][level-1]['mask_path'][int(mask_id)])
 
             # 更新 ori_data_stat，标记为已处理
             ori_data_stat['processed_mask_results'] += 1
@@ -263,7 +263,7 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
     # 获取目录路径
-    directory = osp.join(args.dir,f'SSubset_{args.subset_id}')
+    directory = osp.join(args.dir,f'Subset_{args.subset_id}')
 
     # 查找目录中的 JSON 文件路径
     json_path = osp.join(directory, f"packed_data_full_tag_{args.subset_id}.json")
