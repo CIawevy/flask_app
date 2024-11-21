@@ -14,6 +14,7 @@
             padding: 0;
             min-height: 100vh;
             background-color: #f4f4f9;
+            position: relative;
         }
         h1 { font-size: 28px; margin-bottom: 10px; }
         h2 { font-size: 22px; margin-bottom: 10px; }
@@ -35,9 +36,27 @@
         .instructions { font-size: 20px; text-align: left; margin-top: 10px; margin-bottom: 20px; }
         .instructions ul { padding: 0; }
         .instructions li { list-style: none; line-height: 1.5; }
+        .copyright {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            font-size: 0.9rem;
+            color: #6c757d;
+        }
+        .copyright a {
+            text-decoration: none;
+            color: #6c757d;
+        }
+        .copyright a:hover {
+            text-decoration: underline;
+        }
     </style>
 </head>
 <body>
+    <div class="copyright">
+        © 2024 <a href="https://github.com/CIawevy/flask_app" target="_blank">Clawer</a>. All rights reserved.
+    </div>
+
     <h1>Mask Filter for Subset {{ subset_id }}</h1>
     <p>欢迎, <strong>{{ username }}</strong>, 来到掩码数据过滤平台！在这里，您可以高效地筛选和处理掩码数据。</p>
 

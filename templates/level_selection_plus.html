@@ -14,6 +14,7 @@
             padding: 0;
             min-height: 100vh;
             background-color: #f4f4f9;
+            position: relative;
         }
         h1, h2 {
             margin: 10px 0;
@@ -136,9 +137,27 @@
             cursor: not-allowed;
             opacity: 0.7;
         }
+        .copyright {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            font-size: 0.9rem;
+            color: #6c757d;
+        }
+        .copyright a {
+            text-decoration: none;
+            color: #6c757d;
+        }
+        .copyright a:hover {
+            text-decoration: underline;
+        }
     </style>
 </head>
 <body>
+    <div class="copyright">
+        © 2024 <a href="https://github.com/CIawevy/flask_app" target="_blank">Clawer</a>. All rights reserved.
+    </div>
+
     <div class="top-bar">
         <!-- Back to Main Page -->
         <form action="{{ url_for('select_subset', username=username) }}" method="get">

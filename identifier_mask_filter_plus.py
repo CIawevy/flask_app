@@ -272,6 +272,7 @@ def select_subset(username):
         return redirect(url_for('inner_init', username=username, subset_id=subset_id))  # 选择子集后跳转到主页面
 
 
+    #TODO: #collect efforts here
     for subset_id, data in progress_stat.items():
         if data['user'] == username:
             progress_stat[subset_id]['user'] = 'unselected'  # 重置为未选中状态
