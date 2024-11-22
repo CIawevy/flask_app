@@ -393,9 +393,10 @@ def logout(username):
             session['user_state'][username]['contributions'][subset_id] = contribution
         else:
             session['user_state'][username]['contributions'][subset_id] += contribution
+        session['user_state'][username]['start_progress'] = cur_progress
 
     session['user_state'][username]['selected_subset'] = None
-    session['user_state'][username]['start_progress'] = cur_progress
+
 
     return redirect(url_for('login'))  # 登出后返回登录页面
 
