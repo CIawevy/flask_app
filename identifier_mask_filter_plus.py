@@ -704,7 +704,7 @@ def select_level(username, subset_id, da_n):
         username=username,
         level_images=processed_images,  # 传递处理后的图像字节流给模板
         progress=progress,
-        undo_stack=undo_stack,
+        undo_stack=undo_stack[-20:],  # 只传递后 N 条记录
         disable_undo=disable_undo
     )
 
@@ -812,7 +812,7 @@ def filter(username, subset_id, da_n, mask_id, level):
         subset_id=subset_id,
         instance=instance_info,
         progress=progress,
-        undo_stack=undo_stack,
+        undo_stack=undo_stack[-20:],  # 只传递后 N 条记录
         disable_skip_image=disable_skip_image,
         disable_undo_last_action=disable_undo_last_action
     )
