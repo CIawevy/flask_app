@@ -56,7 +56,37 @@ def random_color_filter(index):
     ]
     return colors[index % len(colors)]
 
+def get_user_info(username):
+    """动态加载用户信息"""
+    user_dir = osp.join(os.environ.get("DATASET_DIR"), 'users', username)  # 用户文件夹路径
+    user_info_path = osp.join(user_dir, 'user_info.json')  # 用户数据文件路径
 
+    # 如果文件夹不存在，则初始化
+    if not os.path.exists(user_dir):
+        os.makedirs(user_dir, exist_ok=True)
+        user_info = {
+            'selected_subset': None,
+            'contributions': {},
+            'start_progress': 0,
+        }
+        print(f'initializing user info for {username}')
+        save_user_info(username, user_info)  # 保存初始用户信息
+    else:
+        with open(user_info_path, 'r') as f:
+            user_info = json.load(f)
+
+
+    return user_info
+
+
+def save_user_info(username, user_info):
+    """保存用户信息到用户文件夹"""
+    user_dir = osp.join(os.environ.get("DATASET_DIR"), 'users', username)  # 用户文件夹路径
+    user_info_path = osp.join(user_dir, 'user_info.json')  # 用户数据文件路径
+
+    # 保存用户信息到文件
+    with open(user_info_path, 'w') as f:
+        json.dump(user_info, f, indent=4)
 from PIL import Image, ImageOps
 def crop_to_content(image):
     """
@@ -258,25 +288,10 @@ def load_undo_stack(undo_stack_path):
     return []
 
 
-# 初始化用户状态存储字典
-def initialize_user_state(username):
-    """ 初始化用户的状态信息 """
-    user_state = {
-        'selected_subset': None,  # 选中的子集ID
-        'contributions':{},
-        'start_progress' :0,
-    }
-    print(f'initializing user stat for {username}')
-    session['user_state'][username] = user_state
-    print(session['user_state'].keys())
 
 
-# 检查用户是否已登录，且是否已初始化状态
-def check_user_state(username):
-    print(f'current user: {username}')
-    """ 检查用户是否已存在状态信息，没有则初始化 """
-    if username not in session.get('user_state', {}):
-        initialize_user_state(username)
+
+
 
 
 # 用户登录路由
@@ -284,13 +299,59 @@ def check_user_state(username):
 def login():
     if request.method == 'POST':
         username = request.form['username']
-        if 'user_state' not in session:
-            session['user_state'] = {}  # 初始化用户状态字典
-        check_user_state(username)  # 如果没有该用户的状态信息，就初始化
-        return redirect(url_for('select_subset',username=username))  # 登录后跳转到选择子集页面
+        user_info = get_user_info(username)  # 动态加载用户信息
+        return redirect(url_for('select_subset', username=username))  # 跳转到选择子集页面
     return render_template('login.html')
 
+def update_and_collect_user_contributions(progress_stat):
+    """
+    更新所有用户的贡献并返回聚合的贡献数据。
+    :param progress_stat: 当前的进度状态
+    :return: contributions_data 聚合后的贡献数据
+    """
+    contributions_data = {}  # 用于存储所有用户的贡献
+    user_base_dir = osp.join(os.environ.get("DATASET_DIR"), 'users')  # 用户文件夹根目录
 
+    if not os.path.exists(user_base_dir):
+        print("No user data found!")
+        return contributions_data
+
+    for user_folder in os.listdir(user_base_dir):
+        user_dir = osp.join(user_base_dir, user_folder)
+        if not os.path.isdir(user_dir):
+            continue  # 跳过非文件夹项
+
+        user_info_path = osp.join(user_dir, 'user_info.json')
+        if not os.path.exists(user_info_path):
+            continue
+
+        with open(user_info_path, 'r') as f:
+            user_info = json.load(f)
+
+        # 如果用户选择了子集，则更新贡献
+        if user_info.get('selected_subset') is not None:
+            subset_id = user_info['selected_subset']
+            cur_progress = progress_stat[subset_id]['progress']
+            start_progress = user_info.get('start_progress', 0)
+            contribution = cur_progress - start_progress
+
+            if contribution > 0:
+                user_info['contributions'][subset_id] = (
+                    user_info['contributions'].get(subset_id, 0) + contribution
+                )
+                user_info['start_progress'] = cur_progress
+
+            # 保存更新后的用户信息
+            with open(user_info_path, 'w') as f:
+                json.dump(user_info, f, indent=4)
+
+        # 聚合当前用户的贡献数据
+        for subset_id, contribution in user_info.get('contributions', {}).items():
+            if subset_id not in contributions_data:
+                contributions_data[subset_id] = {}
+            contributions_data[subset_id][user_folder] = contribution
+
+    return contributions_data
 # 选择子集页面
 # 选择子集页面
 # 修改 /select_subset/<username> 路由
@@ -298,45 +359,32 @@ def login():
 def select_subset(username):
     progress_stat = get_progress_stat()  # 动态加载 progress_stat
 
+    user_info = get_user_info(username)
+
     if request.method == 'POST':
         action = request.form.get('action')
         subset_id = request.form.get('subset_id')
         if action == 'logout':
             return redirect(url_for('logout', username=username))  # 重定向到登录页面
         subset_id = str(subset_id)  # 确保 subset_id 是字符串
-        session['user_state'][username]['selected_subset'] = subset_id  # 更新用户选择的子集
+        user_info['selected_subset'] = subset_id  # 更新用户选择的子集
         if subset_id not in progress_stat:
             # 如果子集不存在，初始化子集数据
             progress_stat[subset_id] = {'progress': 0, 'status': 'unprocessed', 'user': 'unselected'}
         progress_stat[subset_id]['user'] = username  # 更新子集的用户信息
-        start_progress = progress_stat[subset_id]['progress']  # 获取当前进度
-        session['user_state'][username]['start_progress'] = start_progress  # 保存当前进度
+        user_info['start_progress'] = progress_stat[subset_id]['progress']  # 记录当前进度
+        save_user_info(username, user_info)  # 保存用户信息
         save_progress_stat(progress_stat)  # 保存 progress_stat 到文件
         return redirect(url_for('inner_init', username=username, subset_id=subset_id))  # 选择子集后跳转到主页面
 
-
-    #TODO: #collect efforts here
+    # 更新并收集所有用户的贡献数据
+    contributions_data = update_and_collect_user_contributions(progress_stat)
+    print(contributions_data)
+    #先收集 再暂时unselected
     for subset_id, data in progress_stat.items():
         if data['user'] == username:
             progress_stat[subset_id]['user'] = 'unselected'  # 重置为未选中状态
     save_progress_stat(progress_stat)  # 保存 progress_stat 到文件
-
-    # 遍历所有用户并计算贡献
-    for user, user_state in session.get('user_state', {}).items():
-        if user_state.get('selected_subset') is not None:
-            subset_id = user_state['selected_subset']
-            cur_progress = progress_stat[subset_id]['progress']
-            start_progress = user_state.get('start_progress', 0)
-            contribution = cur_progress - start_progress
-
-            if contribution > 0:
-                if subset_id not in user_state['contributions']:
-                    user_state['contributions'][subset_id] = contribution
-                else:
-                    user_state['contributions'][subset_id] += contribution
-
-            # 更新 `start_progress` 防止重复计算
-            session['user_state'][user]['start_progress'] = cur_progress
 
     # 构造子集的显示信息
     subsets = []
@@ -350,17 +398,12 @@ def select_subset(username):
             'is_disabled': disable
         })
 
-    # 根据用户创建顺序分配索引
-    users = list(session.get('user_state', {}).keys())
-    user_indices = {user: index for index, user in enumerate(users)}
-
-    # 构造所有用户的贡献数据
-    contributions_data = {}
-    for user, user_state in session.get('user_state', {}).items():
-        for subset_id, contribution in user_state.get('contributions', {}).items():
-            if subset_id not in contributions_data:
-                contributions_data[subset_id] = {}
-            contributions_data[subset_id][user] = contribution
+    # 从 contributions_data 构建用户索引信息 分配可视化颜色
+    user_indices = {}
+    for subset_id, user_contributions in contributions_data.items():
+        for user in user_contributions.keys():
+            if user not in user_indices:
+                user_indices[user] = len(user_indices)
 
     return render_template(
         'select_subset.html',
@@ -373,32 +416,41 @@ def select_subset(username):
 # 退出登录
 @app.route('/logout/<username>', methods=['GET'])
 def logout(username):
-    progress_stat = get_progress_stat()  # 加载当前的子集状态
+    progress_stat = get_progress_stat()  # 动态加载进度状态
+    user_info = get_user_info(username)  # 动态加载当前用户信息
 
-    # 遍历所有子集，检查是否是该用户占用
+    # 更新 progress_stat，释放子集
     for subset_id, data in progress_stat.items():
         if data['user'] == username:
-            progress_stat[subset_id]['user'] = 'unselected'  # 重置为未选中状态
+            data['user'] = 'unselected'  # 重置为未选中状态
 
-    # 保存更新后的子集状态
+    # 保存 progress_stat
     save_progress_stat(progress_stat)
 
-    # 统计contributions 并登出
-    if session['user_state'][username]['selected_subset'] is not None:
-        subset_id = session['user_state'][username]['selected_subset']
+    # 统计贡献并更新用户信息
+    if user_info.get('selected_subset') is not None:
+        subset_id = user_info['selected_subset']
         cur_progress = progress_stat[subset_id]['progress']
-        start_progress =session['user_state'][username]['start_progress']
+        start_progress = user_info.get('start_progress', 0)
         contribution = cur_progress - start_progress
-        if subset_id not in session['user_state'][username]['contributions']:
-            session['user_state'][username]['contributions'][subset_id] = contribution
-        else:
-            session['user_state'][username]['contributions'][subset_id] += contribution
-        session['user_state'][username]['start_progress'] = cur_progress
 
-    session['user_state'][username]['selected_subset'] = None
+        if contribution > 0:
+            if subset_id not in user_info['contributions']:
+                user_info['contributions'][subset_id] = contribution
+            else:
+                user_info['contributions'][subset_id] += contribution
 
+        # 更新 start_progress 防止重复计算
+        user_info['start_progress'] = cur_progress
 
-    return redirect(url_for('login'))  # 登出后返回登录页面
+    # 清除当前用户的子集选择
+    user_info['selected_subset'] = None
+
+    # 保存更新后的用户信息
+    print(f'save user info for {username}')
+    save_user_info(username, user_info)
+
+    return redirect(url_for('login'))  # 返回登录页面
 
 
 def filter_instance(data, da_n,mask_id,level):
@@ -521,30 +573,6 @@ def index():
     return redirect(url_for('login'))
     # 遍历数据中的图片
 
-@app.route('/collect_contributions/<username>', methods=['GET'])
-def collect_contributions(username):
-    print(f'starting to collection!******************************')
-    progress_stat = get_progress_stat()  # 获取最新的 progress_stat
-    # 遍历所有子集，检查是否是该用户占用
-    for subset_id, data in progress_stat.items():
-        if data['user'] == username:
-            progress_stat[subset_id]['user'] = 'unselected'  # 重置为未选中状态
-    # 遍历所有用户，计算贡献
-    for username in session['user_state'].keys():
-        if session['user_state'][username]['selected_subset'] is not None:
-            subset_id = session['user_state'][username]['selected_subset']
-            cur_progress = progress_stat[subset_id]['progress']
-            start_progress = session['user_state'][username]['start_progress']
-            contribution = cur_progress - start_progress
-            print(f'get contribution: {contribution} for username:{username}')
-            if subset_id not in session['user_state'][username]['contributions']:
-                session['user_state'][username]['contributions'][subset_id] = contribution
-            else:
-                session['user_state'][username]['contributions'][subset_id] += contribution
-            session['user_state'][username]['start_progress'] = cur_progress
-    session['user_state'][username]['selected_subset'] = None #you can change subset or not change just have a glance at progress
-    save_progress_stat(progress_stat)
-    return redirect(url_for('select_subset', username=username))
 
 @app.route('/select_level/<username>/<subset_id>/<da_n>', methods=['GET', 'POST'])
 def select_level(username, subset_id, da_n):
