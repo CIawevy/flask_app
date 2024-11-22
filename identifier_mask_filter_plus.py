@@ -367,26 +367,46 @@ def update_and_collect_user_contributions(progress_stat):
 # 修改 /select_subset/<username> 路由
 @app.route('/select_subset/<username>', methods=['GET', 'POST'])
 def select_subset(username):
-    progress_stat = get_progress_stat()  # 动态加载 progress_stat
-
-    user_info = get_user_info(username)
-
     if request.method == 'POST':
         action = request.form.get('action')
-        subset_id = request.form.get('subset_id')
         if action == 'logout':
             return redirect(url_for('logout', username=username))  # 重定向到登录页面
+        progress_stat = get_progress_stat()  # 动态加载 progress_stat
+        user_info = get_user_info(username)
+        subset_id = request.form.get('subset_id')
         subset_id = str(subset_id)  # 确保 subset_id 是字符串
-        user_info['selected_subset'] = subset_id  # 更新用户选择的子集
-        if subset_id not in progress_stat:
-            # 如果子集不存在，初始化子集数据
-            progress_stat[subset_id] = {'progress': 0, 'status': 'unprocessed', 'user': 'unselected'}
-        progress_stat[subset_id]['user'] = username  # 更新子集的用户信息
-        user_info['start_progress'] = progress_stat[subset_id]['progress']  # 记录当前进度
-        save_user_info(username, user_info)  # 保存用户信息
-        save_progress_stat(progress_stat)  # 保存 progress_stat 到文件
-        return redirect(url_for('inner_init', username=username, subset_id=subset_id))  # 选择子集后跳转到主页面
+        if progress_stat[subset_id]['user'] != 'unselected':
+            return redirect(url_for('select_subset', username=username))
+        else:
+            user_info['selected_subset'] = subset_id  # 更新用户选择的子集
+            progress_stat[subset_id]['user'] = username  # 更新子集的用户信息
+            user_info['start_progress'] = progress_stat[subset_id]['progress']  # 记录当前进度
+            save_user_info(username, user_info)  # 保存用户信息
+            save_progress_stat(progress_stat)  # 保存 progress_stat 到文件
+            return redirect(url_for('inner_init', username=username, subset_id=subset_id))  # 选择子集后跳转到主页面
 
+    progress_stat = get_progress_stat()  # 动态加载 progress_stat
+    user_info = get_user_info(username)
+    # 先赞停当前用户选择的子集并收集贡献，避免重复统计
+    #每个子集同时只能被一个人选择或者不选择，每个人当前选择也只能有一个子集
+    if user_info.get('selected_subset') is not None:
+        subset_id = user_info['selected_subset']
+        cur_progress = progress_stat[subset_id]['progress']
+        start_progress = user_info.get('start_progress', 0)
+        contribution = cur_progress - start_progress
+
+        if contribution > 0:
+            if subset_id not in user_info['contributions']:
+                user_info['contributions'][subset_id] = contribution
+            else:
+                user_info['contributions'][subset_id] += contribution
+
+        # 更新 start_progress 防止重复计算
+        user_info['start_progress'] = cur_progress
+
+    # 清除当前用户的子集选择
+    user_info['selected_subset'] = None
+    save_user_info(username, user_info)  # 保存用户信息
     # 更新并收集所有用户的贡献数据
     contributions_data = update_and_collect_user_contributions(progress_stat)
     print(contributions_data)
