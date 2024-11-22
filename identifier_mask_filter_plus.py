@@ -3,6 +3,7 @@ import cv2
 import json
 import argparse
 import threading
+import base64
 from fontTools.subset import subset
 from numba.tests.inlining_usecases import inner
 from tqdm import tqdm
@@ -12,6 +13,8 @@ import secrets
 from flask_session import Session  # 新增
 from flask import g  # 新增
 import  time
+from io import BytesIO
+import os
 from tqdm import  tqdm
 global_data = {}
 app = Flask(__name__)
@@ -25,6 +28,14 @@ app.config.update(
 )
 os.makedirs(app.config['SESSION_FILE_DIR'], exist_ok=True)
 Session(app)
+@app.template_filter('b64encode')
+def b64encode_filter(image_bytes):
+    """
+    Custom Jinja filter to base64 encode image bytes.
+    :param image_bytes: BytesIO object or image data
+    :return: Base64 encoded string
+    """
+    return base64.b64encode(image_bytes.getvalue()).decode('utf-8')
 @app.template_filter('random_color')
 def random_color_filter(index):
     colors = [
@@ -45,6 +56,38 @@ def random_color_filter(index):
     ]
     return colors[index % len(colors)]
 
+
+from PIL import Image, ImageOps
+def crop_to_content(image):
+    """
+    自动裁剪图片的白边。
+    :param image: PIL.Image 对象
+    :return: 裁剪后的 PIL.Image 对象
+    """
+    # 去掉明显的白边
+    bg = Image.new(image.mode, image.size, (255, 255, 255))
+    diff = ImageOps.invert(ImageOps.autocontrast(image)).convert("L")
+    bbox = diff.getbbox()
+    return image.crop(bbox) if bbox else image
+
+def resize_to_match(image, target_size):
+    """
+    将图片调整为目标大小。
+    :param image: PIL.Image 对象
+    :param target_size: 目标尺寸 (宽, 高)
+    :return: 调整后的 PIL.Image 对象
+    """
+    return image.resize(target_size, Image.Resampling.LANCZOS)
+def image_to_bytes(image):
+    """
+    将 PIL 图像转换为字节流。
+    :param image: PIL.Image 对象
+    :return: 字节流
+    """
+    img_byte_arr = BytesIO()
+    image.save(img_byte_arr, format='PNG')  # 保存为 PNG 格式
+    img_byte_arr.seek(0)  # 返回到流的开始位置
+    return img_byte_arr
 def initialize_ori_data_stat(data, ori_data_stat_path, num_dict):
     """
     初始化或加载 ori_data_stat 的逻辑。
@@ -586,15 +629,31 @@ def select_level(username, subset_id, da_n):
         level: osp.join(directory, f'masks_tag/level{level}/{da_n}/anotated_img.png')
         for level in num_dict[da_n].keys()
     }
+
     original_image_path = data[da_n]['src_img_path']
-    level_images['Original'] = original_image_path
-    progress_stat = get_progress_stat()
+    level_images['Original'] = original_image_path  # 保留原图路径
+
+    # 打开原图并获取大小
+    original_image = Image.open(original_image_path)
+    target_size = original_image.size  # 获取原图尺寸作为目标大小
+
+    # 处理所有图像（裁剪并调整大小），包括 "Original" 图像
+    processed_images = {}
+    for level, img_path in level_images.items():
+        img = Image.open(img_path)
+        img = crop_to_content(img)  # 去掉白边
+        img = resize_to_match(img, target_size)  # 调整为原图尺寸
+        # 将处理后的图像转换为字节流
+        processed_images[level] = image_to_bytes(img)
+
     # 计算进度百分比
+    progress_stat = get_progress_stat()
     progress = "{:.2f}".format(
         (ori_data_stat['processed_mask_results'] / ori_data_stat['total_mask_results']) * 100
     )
     progress_stat[subset_id]['progress'] = float(progress)
     save_progress_stat(progress_stat)
+
     # 检查是否禁用撤回按钮
     disable_undo = len(undo_stack) == 0
 
@@ -604,7 +663,7 @@ def select_level(username, subset_id, da_n):
         da_n=da_n,
         subset_id=subset_id,
         username=username,
-        level_images=level_images,
+        level_images=processed_images,  # 传递处理后的图像字节流给模板
         progress=progress,
         undo_stack=undo_stack,
         disable_undo=disable_undo

@@ -79,7 +79,7 @@
         }
         .image-container {
             width: 100%;
-            height: 200px;
+            height: auto;  /* 让容器的高度根据图片内容自适应 */
             display: flex;
             align-items: center;
             justify-content: center;
@@ -87,16 +87,15 @@
             border: 1px solid #ddd;
             border-radius: 5px;
         }
+
         .image-container img {
             width: 100%;
             height: 100%;
-            object-fit: cover;
+            object-fit: contain;  /* 确保图片不被裁剪，保持原始比例 */
             cursor: pointer;
             transition: all 0.3s ease-in-out;
         }
-        .image-container img:hover {
-            transform: scale(1.05);
-        }
+
         button {
             padding: 12px 25px;
             font-size: 18px;
@@ -108,12 +107,6 @@
             width: 100%;
             margin-top: 10px;
             transition: all 0.3s ease-in-out;
-        }
-        button:disabled {
-            background-color: #cccccc;
-            color: #666666;
-            cursor: not-allowed;
-            opacity: 0.7;
         }
         .skip-button {
             background-color: #FF4B4B;
@@ -204,12 +197,12 @@
         </ul>
     </div>
 
-    <div class="level-container">
-        {% for level, image_path in level_images.items() %}
+     <div class="level-container">
+        {% for level, img_bytes in level_images.items() %}
             <div class="level-item">
                 <h2>{{ level }}</h2>
                 <div class="image-container">
-                    <img src="{{ url_for('serve_image', filename=image_path) }}" alt="Level {{ level }} Image" loading="lazy">
+                    <img src="data:image/png;base64,{{ img_bytes | b64encode }}" alt="Level {{ level }} Image">
                 </div>
                 <form action="{{ url_for('select_level', username=username, subset_id=subset_id, da_n=da_n) }}" method="post">
                     {% if level == 'Original' %}
