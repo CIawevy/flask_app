@@ -94,8 +94,18 @@ def crop_to_content(image):
     :param image: PIL.Image 对象
     :return: 裁剪后的 PIL.Image 对象
     """
+    # 根据图像模式设置背景颜色
+    if image.mode == "RGB":
+        bg_color = (255, 255, 255)
+    elif image.mode == "L":
+        bg_color = 255
+    elif image.mode == "1":
+        bg_color = True
+    else:
+        raise ValueError(f"Unsupported image mode: {image.mode}")
+
     # 去掉明显的白边
-    bg = Image.new(image.mode, image.size, (255, 255, 255))
+    bg = Image.new(image.mode, image.size, bg_color)
     diff = ImageOps.invert(ImageOps.autocontrast(image)).convert("L")
     bbox = diff.getbbox()
     return image.crop(bbox) if bbox else image
