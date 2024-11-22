@@ -151,6 +151,25 @@
         .copyright a:hover {
             text-decoration: underline;
         }
+        .undo-stack {
+            margin-top: 40px;
+            text-align: center;
+            width: 60%;
+        }
+        .undo-stack h3 {
+            font-size: 18px;
+            margin-bottom: 10px;
+        }
+        .undo-stack-list {
+            font-size: 16px;
+            list-style-type: disc;
+            list-style-position: inside;
+            text-align: center;
+            padding: 15px;
+        }
+        .undo-stack-list li {
+            margin: 5px 0;
+        }
     </style>
 </head>
 <body>
@@ -209,6 +228,16 @@
         <form action="{{ url_for('select_level', username=username, subset_id=subset_id, da_n=da_n) }}" method="post">
             <button type="submit" name="action" value="undo" {% if disable_undo %}disabled{% endif %}>Undo Last Action</button>
         </form>
+    </div>
+
+    <!-- 状态栏 -->
+    <div class="undo-stack">
+        <h3>操作记录 (Undo Stack):</h3>
+        <ul class="undo-stack-list">
+            {% for action in undo_stack | reverse %}
+                <li>{{ action }}</li>
+            {% endfor %}
+        </ul>
     </div>
 </body>
 </html>
