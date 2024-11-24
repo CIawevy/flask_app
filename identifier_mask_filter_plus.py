@@ -709,9 +709,9 @@ def select_level(username, subset_id, da_n):
                 last_action = undo_stack.pop()
                 action_type, undo_da_n, *details = last_action
 
-                if action_type == 'skip_image':
+                if action_type == 'skip_image' or action_type == 'Next':
                     # 撤回跳过图片的操作
-                    ori_data_stat[undo_da_n]['status'] = 'unprocessed'
+                    ori_data_stat[undo_da_n]['status'] = 'unprocessed' if action_type == 'skip_image' else 'selected'
                     ori_data_stat['processed_mask_results'] -= details[0]
 
                 elif action_type == 'select_level':
@@ -732,6 +732,7 @@ def select_level(username, subset_id, da_n):
                     ori_data_stat[undo_da_n]['processed_masks'].remove(details[0])
                     ori_data_stat['processed_mask_results'] -= 1
                     ori_data_stat[undo_da_n]['status'] = 'selected'
+
 
         elif action == 'logout':
             # 登出用户并重定向到登录页面
@@ -815,7 +816,7 @@ def filter(username, subset_id, da_n, mask_id, level):
         ori_data_stat = subset_data['ori_data_stat']
         undo_stack = subset_data['undo_stack']
         new_data = subset_data['new_data']
-
+        num_dict = subset_data['num_dict']
         level = int(level)
         decision = request.form['decision']
 
@@ -841,6 +842,15 @@ def filter(username, subset_id, da_n, mask_id, level):
             if len(ori_data_stat[da_n]['processed_masks']) == sum(subset_data['num_dict'][da_n].values()):
                 ori_data_stat[da_n]['status'] = 'completed'
             undo_stack.append(('skip', da_n, mask_id))
+
+        elif decision == 'Next':
+            # 跳过剩余所有
+            total_edits_in_image = sum(num_dict[da_n].values())
+            already_process_image = len(ori_data_stat[da_n]['processed_masks'])
+            process_ins_num = total_edits_in_image - already_process_image
+            ori_data_stat[da_n]['status'] = 'completed'
+            ori_data_stat['processed_mask_results'] +=process_ins_num
+            undo_stack.append(('Next', da_n,  process_ins_num))
 
         elif decision == 'undo':
             if undo_stack:
