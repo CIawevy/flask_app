@@ -4,6 +4,7 @@ import json
 import argparse
 import threading
 import base64
+import random
 from fontTools.subset import subset
 from numba.tests.inlining_usecases import inner
 from tqdm import tqdm
@@ -88,6 +89,7 @@ def save_user_info(username, user_info):
     with open(user_info_path, 'w') as f:
         json.dump(user_info, f, indent=4)
 from PIL import Image, ImageOps
+from PIL import Image, ImageEnhance
 def crop_to_content(image):
     """
     自动裁剪图片的白边。
@@ -483,13 +485,86 @@ def logout(username):
     return redirect(url_for('login'))  # 返回登录页面
 
 
-def filter_instance(data, da_n,mask_id,level):
+
+def apply_random_color_to_mask(mask_img, color_index=0):
+    """
+    根据提供的颜色索引为掩码区域着色。
+    """
+    def random_color_filter(index):
+        colors = [
+            '#FF5733',  # 鲜红橙色
+            '#3357FF',  # 中等蓝色
+            '#9B59B6',  # 深紫色
+            '#1ABC9C',  # 青绿色
+            '#E74C3C',  # 鲜红色
+            '#34495E',  # 深蓝灰色
+            '#2ECC71',  # 草绿色
+            '#3498DB',  # 浅蓝色
+            '#8E44AD',  # 紫罗兰色
+            '#27AE60',  # 深绿色
+            '#E67E22',  # 橙色
+            '#E84393',  # 粉红色
+        ]
+        return colors[index % len(colors)]
+
+    def hex_to_rgba(hex_color, alpha=150):
+        hex_color = hex_color.lstrip('#')
+        return (
+            int(hex_color[0:2], 16),
+            int(hex_color[2:4], 16),
+            int(hex_color[4:6], 16),
+            alpha
+        )
+
+    # 获取掩码数据
+    mask_data = mask_img.getdata()
+    selected_color = hex_to_rgba(random_color_filter(color_index), alpha=150)
+
+    new_mask_data = [
+        selected_color if value > 0 else (0, 0, 0, 0)  # 非零区域使用颜色
+        for value in mask_data
+    ]
+    mask_img_colored = Image.new("RGBA", mask_img.size)
+    mask_img_colored.putdata(new_mask_data)
+    return mask_img_colored
+
+def combine_with_transparent_background(original_img, mask_img_colored, alpha=0.5):
+    """
+    将原图透明化后，与着色的掩码进行叠加。
+    """
+    # 降低原图亮度/透明度
+    transparent_bg = Image.new("RGBA", original_img.size, (255, 255, 255, int(255 * (1 - alpha))))
+    original_transparent = Image.alpha_composite(transparent_bg, original_img)
+
+    # 将掩码叠加到透明化的原图上
+    combined_img = Image.alpha_composite(original_transparent, mask_img_colored)
+    return combined_img
+
+
+def filter_instance(data, da_n, mask_id, level):
     src_img_path = data[da_n]['src_img_path']
-    instances = data[da_n]['instances'][level-1]
+    instances = data[da_n]['instances'][level - 1]
+    mask_path = instances['mask_path'][int(mask_id)]
+
+    # 打开原图和掩码图
+    ori_img = Image.open(src_img_path).convert("RGBA")
+    mask_img = Image.open(mask_path).convert("L")
+
+    # 调整掩码尺寸以匹配原图
+    if mask_img.size != ori_img.size:
+        mask_img = mask_img.resize(ori_img.size, Image.NEAREST)
+
+
+    # 生成合成图像：裁剪掩码区域，其他部分填充为白色
+    white_background = Image.new("RGBA", ori_img.size, (255, 255, 255, 255))  # 白色背景
+    crop_img = Image.composite(ori_img, white_background, mask_img)  # 保留掩码区域
+
+    # 返回数据
     return {
-        'ori_img': src_img_path,
-        'ori_mask': instances['mask_path'][int(mask_id)],
-        'obj_label': instances['obj_label'][int(mask_id)],
+        'ori_img': image_to_bytes(ori_img),          # 原图
+        # 'ori_mask': image_to_bytes( mask_img),  # 着色掩码图
+        'crop_img': image_to_bytes(crop_img),       # 裁剪后的合成图像
+        'obj_label': instances['obj_label'][int(mask_id)],     # 目标标签
     }
 # 动态加载图片的路由
 @app.route('/file/<path:filename>')
@@ -733,16 +808,15 @@ def select_level(username, subset_id, da_n):
 def filter(username, subset_id, da_n, mask_id, level):
     global global_data
 
-    # 获取子集数据
-    subset_data = global_data[subset_id]
-    data = subset_data['data']
-    ori_data_stat = subset_data['ori_data_stat']
-    undo_stack = subset_data['undo_stack']
-    new_data = subset_data['new_data']
-
-    level = int(level)
-
     if request.method == 'POST':
+        # 获取子集数据
+        subset_data = global_data[subset_id]
+        data = subset_data['data']
+        ori_data_stat = subset_data['ori_data_stat']
+        undo_stack = subset_data['undo_stack']
+        new_data = subset_data['new_data']
+
+        level = int(level)
         decision = request.form['decision']
 
         if decision == 'keep':
@@ -809,6 +883,13 @@ def filter(username, subset_id, da_n, mask_id, level):
 
         return redirect(url_for('inner_select', username=username, subset_id=subset_id))
 
+    # 获取子集数据
+    subset_data = global_data[subset_id]
+    data = subset_data['data']
+    ori_data_stat = subset_data['ori_data_stat']
+    undo_stack = subset_data['undo_stack']
+
+    level = int(level)
     progress_stat = get_progress_stat()
     # 计算进度百分比
     progress = "{:.2f}".format(

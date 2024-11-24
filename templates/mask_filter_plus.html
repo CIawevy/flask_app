@@ -18,9 +18,34 @@
         }
         h1 { font-size: 28px; margin-bottom: 10px; }
         h2 { font-size: 22px; margin-bottom: 10px; }
+        h3 { font-size: 20px; margin-bottom: 10px; }
         p { font-size: 20px; margin-bottom: 20px; line-height: 1.8; text-align: center; }
-        .image-container { display: flex; justify-content: center; align-items: center; margin-bottom: 20px; }
-        img { margin: 10px; border: 1px solid #ddd; border-radius: 5px; box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1); width: 300px; }
+        .image-container {
+            display: flex;
+            flex-direction: row; /* 修改为水平排列 */
+            justify-content: center;
+            gap: 20px;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+        .image-container img {
+            margin: 10px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+            width: 300px;
+            transition: transform 0.3s ease;
+        }
+        .image-container img:hover {
+            transform: scale(1.5); /* 悬停放大 */
+            z-index: 10; /* 避免被其他元素遮挡 */
+        }
+        .image-container p {
+            font-size: 16px;
+            color: #333;
+            margin: 5px 0 15px;
+            text-align: center;
+        }
         .button-container { display: flex; justify-content: center; gap: 15px; }
         button { padding: 15px 25px; font-size: 18px; background-color: #4CAF50; color: white; border: none; border-radius: 5px; cursor: pointer; transition: background-color 0.3s ease; }
         button:hover { background-color: #45a049; }
@@ -76,12 +101,21 @@
         <div class="progress-bar">{{ progress }}%</div>
     </div>
 
-    <p><strong>目标标签:</strong> {{ instance.obj_label }}</p>
+    <p><strong>Object Label:</strong> {{ instance.obj_label }}</p>
 
-    <h2>图片</h2>
     <div class="image-container">
-        <img src="{{ url_for('serve_image', filename=instance.ori_img) }}" alt="原始图片" width="300">
-        <img src="{{ url_for('serve_image', filename=instance.ori_mask) }}" alt="掩码图片" width="300">
+        <!-- 原始图像 -->
+        <div style="text-align: center;">
+            <img src="data:image/png;base64,{{ instance.ori_img | b64encode }}"
+                 alt="Original Image"
+                 class="image-hover">
+        </div>
+        <!-- 裁剪后的合成图像 -->
+        <div style="text-align: center;">
+            <img src="data:image/png;base64,{{ instance.crop_img | b64encode }}"
+                 alt="Masked Image"
+                 class="image-hover">
+        </div>
     </div>
 
     <!-- 表单 -->

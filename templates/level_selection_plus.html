@@ -77,25 +77,31 @@
             box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
             width: 300px;
         }
-        .image-container {
-            width: 100%;
-            height: auto;  /* 让容器的高度根据图片内容自适应 */
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            overflow: hidden;
-            border: 1px solid #ddd;
-            border-radius: 5px;
+         .image-container {
+        width: 100%;
+        height: auto;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        overflow: visible; /* 修改为可见，允许放大部分超出容器 */
+        border: 1px solid #ddd;
+        border-radius: 5px;
+        position: relative; /* 添加相对定位以支持绝对定位 */
         }
 
         .image-container img {
             width: 100%;
             height: 100%;
-            object-fit: contain;  /* 确保图片不被裁剪，保持原始比例 */
+            object-fit: contain; /* 确保图片不被裁剪，保持原始比例 */
             cursor: pointer;
-            transition: all 0.3s ease-in-out;
+            transition: transform 0.3s ease-in-out;
+            position: relative; /* 允许图片放大超出容器 */
         }
 
+        .image-container img:hover {
+            transform: scale(1.5); /* 悬停放大 */
+            z-index: 10; /* 避免被其他元素遮挡 */
+        }
         button {
             padding: 12px 25px;
             font-size: 18px;
@@ -171,11 +177,9 @@
     </div>
 
     <div class="top-bar">
-        <!-- Back to Main Page -->
         <form action="{{ url_for('select_subset', username=username) }}" method="get">
             <button type="submit">Back to Main Page</button>
         </form>
-        <!-- Logout -->
         <form action="{{ url_for('logout', username=username) }}" method="get">
             <button type="submit" class="logout">Logout</button>
         </form>
@@ -223,7 +227,6 @@
         </form>
     </div>
 
-    <!-- 状态栏 -->
     <div class="undo-stack">
         <h3>操作记录 (Undo Stack):</h3>
         <ul class="undo-stack-list">
