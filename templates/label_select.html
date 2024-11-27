@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Mask Filter</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            margin: 0;
+            padding: 0;
+            min-height: 100vh;
+            background-color: #f4f4f9;
+            position: relative;
+        }
+        h1 { font-size: 28px; margin-bottom: 10px; }
+        h2 { font-size: 22px; margin-bottom: 10px; }
+        h3 { font-size: 20px; margin-bottom: 10px; }
+        p { font-size: 20px; margin-bottom: 20px; line-height: 1.8; text-align: center; }
+        .image-container {
+            display: flex;
+            flex-direction: row; /* 修改为水平排列 */
+            justify-content: center;
+            gap: 20px;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+        .image-container img {
+            margin: 10px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+            width: 300px;
+            transition: transform 0.3s ease;
+        }
+        .image-container p {
+            font-size: 16px;
+            color: #333;
+            margin: 5px 0 15px;
+            text-align: center;
+        }
+        .zoomable {
+            vertical-align: top;
+            object-fit: contain;
+            max-height: 300px;
+            margin: 10px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+            transition: transform 0.3s ease;
+        }
+
+        .zoomable.expanded {
+            transform: scale(1.5); /* 放大比例 */
+            z-index: 10; /* 确保放大的图片不被其他元素遮挡 */
+        }
+        .undo-stack-list {
+            font-size: 16px;
+            list-style-type: disc;
+            list-style-position: inside;
+            text-align: center;
+            padding: 15px;
+        }
+        .undo-stack-list li {
+            margin: 5px 0;
+        }
+
+        .button-container { display: flex; justify-content: center; gap: 15px; }
+        button { padding: 15px 25px; font-size: 18px; background-color: #4CAF50; color: white; border: none; border-radius: 5px; cursor: pointer; transition: background-color 0.3s ease; }
+        button:hover { background-color: #45a049; }
+        button:disabled { background-color: #ddd; cursor: not-allowed; }
+        form { margin-top: 20px; }
+        .progress-container { width: 60%; background-color: #e0e0df; border-radius: 10px; margin: 20px 0; }
+        .progress-bar { width: {{ progress }}%; height: 30px; background-color: #4CAF50; border-radius: 10px; text-align: center; line-height: 30px; color: white; font-size: 16px; }
+        .status-bar { width: 80%; background-color: #fff; padding: 10px; margin-top: 20px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1); text-align: left; }
+        .status-bar h3 { margin-top: 0; font-size: 20px; }
+        .undo-stack-list { font-size: 16px; list-style-type: none; padding-left: 0; }
+        .undo-stack-list li { margin: 5px 0; }
+        .instructions-title { text-align: center; font-size: 22px; margin-bottom: 10px; }
+        .instructions { font-size: 20px; text-align: left; margin-top: 10px; margin-bottom: 20px; }
+        .instructions ul { padding: 0; }
+        .instructions li { list-style: none; line-height: 1.5; }
+        .copyright {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            font-size: 0.9rem;
+            color: #6c757d;
+        }
+        .copyright a {
+            text-decoration: none;
+            color: #6c757d;
+        }
+        .copyright a:hover {
+            text-decoration: underline;
+        }
+
+        /* Object Label 样式增强 */
+        .object-label {
+            font-size: 24px; /* 增加字体大小 */
+            font-weight: bold; /* 加粗字体 */
+            color: #ff5722; /* 设置醒目的颜色 */
+            background-color: #fff3e0; /* 添加背景色 */
+            padding: 10px 15px; /* 给标签添加内边距 */
+            border-radius: 5px; /* 圆角效果 */
+            border: 2px solid #ff5722; /* 设置边框 */
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1); /* 增加阴影效果 */
+            display: inline-block;
+            margin-bottom: 20px;
+        }
+
+        .chinese-label {
+            font-size: 24px; /* 增加字体大小 */
+            font-weight: bold; /* 加粗字体 */
+            color: #2196F3; /* 设置醒目的颜色 */
+            background-color: #e3f2fd; /* 添加背景色 */
+            padding: 10px 15px; /* 给标签添加内边距 */
+            border-radius: 5px; /* 圆角效果 */
+            border: 2px solid #2196F3; /* 设置边框 */
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1); /* 增加阴影效果 */
+            display: inline-block;
+            margin-bottom: 20px;
+        }
+    </style>
+</head>
+<body>
+    <div class="copyright">
+        © 2024 <a href="https://github.com/CIawevy/flask_app" target="_blank">Clawer</a>. All rights reserved.
+    </div>
+
+    <h1>Mask Filter for Subset {{ subset_id }}</h1>
+    <p>欢迎, <strong>{{ username }}</strong>, 来到掩码数据过滤平台！在这里，您可以高效地筛选和处理掩码数据。</p>
+
+    <div class="instructions">
+        <h2 class="instructions-title">使用指南：</h2>
+        <ul>
+            <li>1. 点击"Skip"跳过错误标签。</li>
+            <li>2. 点击"Keep"保留该实例。</li>
+            <li>3. 使用"Undo"撤回上一步操作。</li>
+            <li>4. 使用“Back”回到上一页面。</li>
+            <li>5. 允许修改标签</li>
+        </ul>
+    </div>
+
+    <!-- 进度条 -->
+    <div class="progress-container">
+        <div class="progress-bar">{{ progress }}%</div>
+    </div>
+
+    <div class="object-label">
+     {{ instance.label }} | {{ instance.chinese_label }}
+</div>
+
+    <div class="image-container">
+        <!-- 原始图像 -->
+        <div style="text-align: center;">
+            <img src="data:image/png;base64,{{ instance.ori_img | b64encode }}"
+                 alt="Original Image" class="zoomable" ondblclick="toggleZoom(this)">
+        </div>
+        <!-- 裁剪后的合成图像 -->
+        <div style="text-align: center;">
+            <img src="data:image/png;base64,{{ instance.crop_img | b64encode }}"
+                 alt="Masked Image" class="zoomable" ondblclick="toggleZoom(this)">
+        </div>
+    </div>
+    <input type="hidden" id="username" value="{{ username }}">
+    <!-- 表单 -->
+    <form method="POST">
+        <div class="button-container">
+            <button type="submit" name="decision" value="keep">保留 (Keep)</button>
+            <button type="submit" name="decision" value="skip">跳过 (Skip)</button>
+            <button type="submit" name="decision" value="undo"
+                {% if disable_undo %}disabled{% endif %}>撤回 (Undo)</button>
+            <button type="submit" name="decision" value="Back">返回 (Back)</button>
+        </div>
+    </form>
+    <!-- 状态栏展示 undo_stack -->
+     <div class="undo-stack">
+        <h3>操作记录 (Undo Stack):</h3>
+        <ul class="undo-stack-list">
+            {% for action in undo_stack | reverse %}
+                <li>{{ action }}</li>
+            {% endfor %}
+        </ul>
+    </div>
+    <script>
+        let timeout;
+        function toggleZoom(imgElement) {
+                imgElement.classList.toggle('expanded'); // 切换 'expanded' 类，进行放大或恢复
+            }
+        // 监听用户活动并重置超时计时
+        function resetTimeout() {
+            clearTimeout(timeout);
+            timeout = setTimeout(() => {
+                // 用户会话超时，触发后端登出
+                let username = document.getElementById('username').value;  // 获取页面中的 username
+
+                fetch(`/logout/${username}`, {
+                    method: 'GET',  // 使用 GET 请求，与你的后端匹配
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                })
+                .then(response => {
+                    console.log('Response:', response);  // 打印响应对象，确保状态是302
+                    if (response.status === 302 || response.status === 301 || response.redirected) {
+                        console.log('Redirecting to', response.url);  // 确认重定向的 URL
+                        window.location.replace(response.url);  // 使用 replace 来避免用户回退
+                    } else {
+                        // 如果没有重定向，打印错误信息
+                        console.error('Unexpected response status:', response.status);
+                    }
+                })
+                .catch(error => {
+                    console.error('Logout error:', error);
+                });
+            }, 10 * 60 * 1000);  // 10分钟超时
+        }
+
+        // 监听用户活动（鼠标移动、键盘输入）
+        document.addEventListener('mousemove', resetTimeout);
+        document.addEventListener('keydown', resetTimeout);
+
+        // 启动初始超时计时器
+        resetTimeout();
+    </script>
+</body>
+</html>

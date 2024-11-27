@@ -98,9 +98,26 @@
             position: relative; /* 允许图片放大超出容器 */
         }
 
-        .image-container img:hover {
-            transform: scale(1.5); /* 悬停放大 */
-            z-index: 10; /* 避免被其他元素遮挡 */
+        .zoomable {
+            vertical-align: top;
+            object-fit: contain;
+            max-height: 300px;
+            margin: 10px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+            transition: transform 0.3s ease;
+        }
+
+        .zoomable.expanded {
+            transform: scale(1.5); /* 放大比例 */
+            z-index: 10; /* 确保放大的图片不被其他元素遮挡 */
+        }
+
+        /* 选择按钮的样式 */
+        .select-button.expanded {
+            background-color: #ffc107;  /* 选中时的样式 */
+            color: black;
         }
         button {
             padding: 12px 25px;
@@ -200,13 +217,13 @@
             <li>3. Undo last action: 撤回上一步操作</li>
         </ul>
     </div>
-
+    <input type="hidden" id="username" value="{{ username }}">
      <div class="level-container">
         {% for level, img_bytes in level_images.items() %}
             <div class="level-item">
                 <h2>{{ level }}</h2>
                 <div class="image-container">
-                    <img src="data:image/png;base64,{{ img_bytes | b64encode }}" alt="Level {{ level }} Image">
+                    <img src="data:image/png;base64,{{ img_bytes | b64encode }}" alt="Level {{ level }} Image" class="zoomable" ondblclick="toggleZoom(this)">
                 </div>
                 <form action="{{ url_for('select_level', username=username, subset_id=subset_id, da_n=da_n) }}" method="post">
                     {% if level == 'Original' %}
@@ -226,12 +243,52 @@
             <button type="submit" name="action" value="undo" {% if disable_undo %}disabled{% endif %}>Undo Last Action</button>
         </form>
     </div>
+    <script>
+        let timeout;
+         function toggleZoom(imgElement) {
+                imgElement.classList.toggle('expanded'); // 切换 'expanded' 类，进行放大或恢复
+            }
+        // 监听用户活动并重置超时计时
+        function resetTimeout() {
+            clearTimeout(timeout);
+            timeout = setTimeout(() => {
+                // 用户会话超时，触发后端登出
+                let username = document.getElementById('username').value;  // 获取页面中的 username
 
+                fetch(`/logout/${username}`, {
+                    method: 'GET',  // 使用 GET 请求，与你的后端匹配
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                })
+                .then(response => {
+                    console.log('Response:', response);  // 打印响应对象，确保状态是302
+                    if (response.status === 302 || response.status === 301 || response.redirected) {
+                        console.log('Redirecting to', response.url);  // 确认重定向的 URL
+                        window.location.replace(response.url);  // 使用 replace 来避免用户回退
+                    } else {
+                        // 如果没有重定向，打印错误信息
+                        console.error('Unexpected response status:', response.status);
+                    }
+                })
+                .catch(error => {
+                    console.error('Logout error:', error);
+                });
+            }, 10 * 60 * 1000);  // 10分钟超时
+        }
+
+        // 监听用户活动（鼠标移动、键盘输入）
+        document.addEventListener('mousemove', resetTimeout);
+        document.addEventListener('keydown', resetTimeout);
+
+        // 启动初始超时计时器
+        resetTimeout();
+    </script>
     <div class="undo-stack">
         <h3>操作记录 (Undo Stack):</h3>
         <ul class="undo-stack-list">
             {% for action in undo_stack | reverse %}
-                <li>{{ action }}</li>
+            <li>{{ action }}</li>
             {% endfor %}
         </ul>
     </div>

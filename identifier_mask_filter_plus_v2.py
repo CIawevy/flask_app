@@ -1,13 +1,8 @@
-import os
-import cv2
 import json
 import argparse
 import threading
 import base64
 import random
-from fontTools.subset import subset
-from numba.tests.inlining_usecases import inner
-from tqdm import tqdm
 from flask import Flask, render_template, request, redirect, url_for, send_file, session
 import os.path as osp
 import secrets
@@ -16,7 +11,92 @@ from flask import g  # 新增
 import  time
 from io import BytesIO
 import os
-from tqdm import  tqdm
+from tqdm import tqdm
+import requests
+import time
+from PIL import Image, ImageOps
+from PIL import Image, ImageEnhance
+import hashlib
+import uuid
+# youdao_url = 'https://openapi.youdao.com/api'  # 有道api地址
+# app_key = "uxrIpJUaxprcn4tvQBUFMSlMXRbzOfnI"  # 应用密钥
+# app_id = "746c5a9d6c19a99d"  # 应用id 有道免费10元额度
+# import requests
+# import json
+
+# def translate_youdao(translate_text):
+#     # 翻译文本生成sign前进行:的处理
+#     input_text = ""
+#
+#     # 当文本长度小于等于20时，取文本
+#     if (len(translate_text) <= 20):
+#         input_text = translate_text
+#
+#     # 当文本长度大于20时，进行特殊处理
+#     elif (len(translate_text) > 20):
+#         input_text = translate_text[:10] + str(len(translate_text)) + translate_text[-10:]
+#
+#     time_curtime = int(time.time())  # 秒级时间戳获取
+#
+#     uu_id = uuid.uuid4()  # 随机生成的uuid数，为了每次都生成一个不重复的数。
+#     sign = hashlib.sha256(
+#         (app_id + input_text + str(uu_id) + str(time_curtime) + app_key).encode('utf-8')).hexdigest()  # sign生成
+#
+#     data = {
+#         'q': translate_text,  # 翻译文本
+#         'from': "en",  # 源语言
+#         'to': "zh-CHS",  # 翻译语言
+#         'appKey': app_id,  # 应用id
+#         'salt': uu_id,  # 随机生产的uuid码
+#         'sign': sign,  # 签名
+#         'signType': "v3",  # 签名类型，固定值
+#         'curtime': time_curtime,  # 秒级时间戳
+#     }
+#
+#     r = requests.get(youdao_url, params=data).json()  # 获取返回的json()内容
+#     return r["translation"][0]
+API_URL = "http://www.trans-home.com/api/index/translate"
+TOKEN = "szjsaFIeoBUgoJ1yslzq" # 请替换为实际的 API token
+
+def translate(keywords, target_language):
+    """
+    调用第三方翻译 API 进行文本翻译
+
+    :param keywords: 需要翻译的文本
+    :param target_language: 目标语言代码，如 'en' (英语), 'de' (德语) 等
+    :return: 翻译后的文本或错误信息
+    """
+    # 构建请求的完整 URL
+    url = f"{API_URL}?token={TOKEN}"
+
+    # 构建请求数据
+    payload = json.dumps({
+        "keywords": keywords,          # 需要翻译的文本
+        "targetLanguage": target_language  # 目标语言
+    })
+
+    # 请求头设置
+    headers = {
+        'Content-Type': 'application/json'  # 设置请求数据格式为 JSON
+    }
+
+    # 发送 POST 请求
+    response = requests.post(url, headers=headers, data=payload)
+
+    # 如果请求成功，处理返回的 JSON 数据
+    if response.status_code == 200:
+        result = response.json()  # 解析返回的 JSON 数据
+
+        # 判断翻译是否成功
+        if result.get("code") == 1:
+            # 翻译成功，返回翻译后的文本
+            return result["data"]["text"]
+        else:
+            # 翻译失败，返回错误信息
+            return f"Error: {result.get('info')}"
+    else:
+        # 请求失败，返回 HTTP 错误状态码
+        return f"Request failed with status code: {response.status_code}"
 global_data = {}
 app = Flask(__name__)
 app.secret_key = secrets.token_hex(16)
@@ -57,6 +137,8 @@ def random_color_filter(index):
     ]
     return colors[index % len(colors)]
 
+
+
 def get_user_info(username):
     """动态加载用户信息"""
     user_dir = osp.join(os.environ.get("DATASET_DIR"), 'users', username)  # 用户文件夹路径
@@ -88,8 +170,7 @@ def save_user_info(username, user_info):
     # 保存用户信息到文件
     with open(user_info_path, 'w') as f:
         json.dump(user_info, f, indent=4)
-from PIL import Image, ImageOps
-from PIL import Image, ImageEnhance
+
 def crop_to_content(image):
     """
     自动裁剪图片的白边。
@@ -153,8 +234,10 @@ def initialize_ori_data_stat(data, ori_data_stat_path, num_dict):
         ori_data_stat = {
             da_n: {
                 'status': 'unprocessed',
-                'processed_masks': [],  # 用于记录已处理的 mask
-                'level': None,  # 当前未选择 level
+                'cur_level': None,
+                'max_level': None,
+                'selected_masks': {},
+                'processed_masks':{},
             } for da_n in data.keys()
         }
         ori_data_stat['total_mask_results'] = total_mask_results  # 总 mask 数量
@@ -540,31 +623,71 @@ def combine_with_transparent_background(original_img, mask_img_colored, alpha=0.
     combined_img = Image.alpha_composite(original_transparent, mask_img_colored)
     return combined_img
 
-
-def filter_instance(data, da_n, mask_id, level):
+def filter_instance_label(data, ori_data_stat, da_n,level,mask_id):
+    # 获取原图路径和用户选择的掩码信息
     src_img_path = data[da_n]['src_img_path']
-    instances = data[da_n]['instances'][level - 1]
-    mask_path = instances['mask_path'][int(mask_id)]
+    selected_masks = ori_data_stat[da_n]["selected_masks"]
 
-    # 打开原图和掩码图
+    # 打开原图
     ori_img = Image.open(src_img_path).convert("RGBA")
+
+
+    mask_path = data[da_n]['instances'][int(level) - 1]['mask_path'][int(mask_id)]
+    ori_label = data[da_n]['instances'][int(level) - 1]['obj_label'][int(mask_id)]
+    try:
+        chinese_label = translate(ori_label,'zh-CHS')
+    except (requests.exceptions.RequestException, ValueError) as e:
+        chinese_label = "API ERROR"
+        print(f"Translation error: {e}")
+    # 获取掩码图像
     mask_img = Image.open(mask_path).convert("L")
 
     # 调整掩码尺寸以匹配原图
     if mask_img.size != ori_img.size:
         mask_img = mask_img.resize(ori_img.size, Image.NEAREST)
 
-
     # 生成合成图像：裁剪掩码区域，其他部分填充为白色
-    white_background = Image.new("RGBA", ori_img.size, (255, 255, 255, 255))  # 白色背景
-    crop_img = Image.composite(ori_img, white_background, mask_img)  # 保留掩码区域
+    white_background = Image.new("RGBA", ori_img.size, (255, 255, 255, 255))
+    crop_img = Image.composite(ori_img, white_background, mask_img)
 
     # 返回数据
     return {
-        'ori_img': image_to_bytes(ori_img),          # 原图
-        # 'ori_mask': image_to_bytes( mask_img),  # 着色掩码图
-        'crop_img': image_to_bytes(crop_img),       # 裁剪后的合成图像
-        'obj_label': instances['obj_label'][int(mask_id)],     # 目标标签
+        'ori_img': image_to_bytes(ori_img),  # 原图
+        'crop_img': image_to_bytes(crop_img),  # 所有掩码图像
+        'label': ori_label,  #label
+        'chinese_label':chinese_label
+    }
+
+def filter_instance(data, da_n, level):
+    # 获取原图路径和实例信息
+    src_img_path = data[da_n]['src_img_path']
+    instances = data[da_n]['instances'][level - 1]
+
+    # 打开原图
+    ori_img = Image.open(src_img_path).convert("RGBA")
+
+    # 保存所有掩码图像
+    crop_images = []
+
+    for mask_id, mask_path in enumerate(instances['mask_path']):
+        # 获取掩码图像
+        mask_img = Image.open(mask_path).convert("L")
+
+        # 调整掩码尺寸以匹配原图
+        if mask_img.size != ori_img.size:
+            mask_img = mask_img.resize(ori_img.size, Image.NEAREST)
+
+        # 生成合成图像：裁剪掩码区域，其他部分填充为白色
+        white_background = Image.new("RGBA", ori_img.size, (255, 255, 255, 255))  # 白色背景
+        crop_img = Image.composite(ori_img, white_background, mask_img)  # 保留掩码区域
+
+        # 将每个掩码图像存入列表
+        crop_images.append(image_to_bytes(crop_img))  # 只需要保存裁剪后的合成图像
+
+    # 返回数据
+    return {
+        'ori_img': image_to_bytes(ori_img),  # 原图
+        'crop_images': crop_images,  # 所有掩码图像
     }
 # 动态加载图片的路由
 @app.route('/file/<path:filename>')
@@ -578,7 +701,6 @@ def serve_image(filename):
         return send_file(file_path)
     else:
         return "File not found", 404
-
 @app.route('/inner_select/<username>/<subset_id>', methods=['GET', 'POST'])
 def inner_select(username, subset_id):
     global global_data
@@ -593,22 +715,7 @@ def inner_select(username, subset_id):
         # 跳过没有有效 instances 的图片
         if 'instances' not in da or ori_data_stat[da_n]['status'] == 'completed':
             continue
-
-        # 判断是否进入 level 选择
-        if ori_data_stat[da_n]['status'] == 'unprocessed':
-            return redirect(url_for('select_level', username=username, subset_id=subset_id, da_n=da_n))
-
-        # 判断是否已选择 level
-        if ori_data_stat[da_n]['status'] == 'selected':
-            level = ori_data_stat[da_n]['level']
-            # 继续处理 mask
-            mask_paths = da['instances'][level - 1]['mask_path']
-            processed_masks = [int(mask) for mask in ori_data_stat[da_n].get('processed_masks', [])]
-
-            for mask_id, mask_path in enumerate(mask_paths):
-                if mask_id not in processed_masks:
-                    # 返回当前未处理的 mask
-                    return redirect(url_for('filter', username=username, subset_id=subset_id, da_n=da_n, mask_id=mask_id, level=level))
+        return redirect(url_for('inner_select_single',username=username,subset_id=subset_id,da_n=da_n))
 
     # 如果所有图片均已完成，更新全局进度
     progress_stat = get_progress_stat()
@@ -616,6 +723,35 @@ def inner_select(username, subset_id):
     save_progress_stat(progress_stat)
 
     return redirect(url_for('select_subset', username=username))
+@app.route('/inner_select_single/<username>/<subset_id>/<da_n>', methods=['GET', 'POST'])
+def inner_select_single(username, subset_id,da_n):
+    global global_data
+
+    # 获取子集数据
+    subset_data = global_data[subset_id]
+    ori_data_stat = subset_data['ori_data_stat']
+    stat = ori_data_stat[da_n]['status']
+    print(f'come to inner_select current stat:{stat}')
+    # print(ori_data_stat[da_n]['processed_masks'])
+    # 判断是否进入 level 选择
+    if stat == 'unprocessed':
+        return redirect(url_for('select_level', username=username, subset_id=subset_id, da_n=da_n))
+    # 判断是否进入 mask 选择
+    if stat == 'level':
+        # 继续处理 mask
+        return redirect(url_for('select_mask', username=username, subset_id=subset_id, da_n=da_n, level=ori_data_stat[da_n]['cur_level']))
+    if stat == 'mask':
+        for lvl , mask_ids in ori_data_stat[da_n]['selected_masks'].items():
+            for mask_id in mask_ids: #str '1' in selected masks
+                mask_id = int(mask_id) - 1 #0 in processed masks
+                if lvl not in ori_data_stat[da_n]['processed_masks']:
+                    ori_data_stat[da_n]['processed_masks'][str(lvl)] = []
+                if mask_id in ori_data_stat[da_n]['processed_masks'][str(lvl)]:
+                    continue
+                return redirect(url_for('select_label', username=username, subset_id=subset_id, da_n=da_n,level=lvl,mask_id=mask_id))
+    return redirect(url_for('inner_select', username=username, subset_id=subset_id))
+
+
 
 @app.route('/inner_init/<username>/<subset_id>', methods=['GET', 'POST'])
 def inner_init(username, subset_id):
@@ -646,8 +782,10 @@ def inner_init(username, subset_id):
             ori_data_stat = {
                 da_n: {
                     'status': 'unprocessed',
-                    'processed_masks': [],
-                    'level': None,
+                    'cur_level': None,
+                    'max_level':None,
+                    'selected_masks':{},
+                    'processed_masks':{}
                 } for da_n in data.keys()
             }
             ori_data_stat['total_mask_results'] = total_mask_results
@@ -682,16 +820,13 @@ def index():
 @app.route('/select_level/<username>/<subset_id>/<da_n>', methods=['GET', 'POST'])
 def select_level(username, subset_id, da_n):
     global global_data
-
-    # 获取子集数据
-    subset_data = global_data[subset_id]
-    data = subset_data['data']
-    ori_data_stat = subset_data['ori_data_stat']
-    undo_stack = subset_data['undo_stack']
-    num_dict = subset_data['num_dict']
-    new_data = subset_data['new_data']
-
     if request.method == 'POST':
+        # 获取子集数据
+        subset_data = global_data[subset_id]
+        ori_data_stat = subset_data['ori_data_stat']
+        undo_stack = subset_data['undo_stack']
+        num_dict = subset_data['num_dict']
+        new_data = subset_data['new_data']
         action = request.form.get('action')  # 获取用户的动作
         selected_level = request.form.get('level')  # 获取用户选择的分割级别
 
@@ -708,56 +843,53 @@ def select_level(username, subset_id, da_n):
             if undo_stack:
                 last_action = undo_stack.pop()
                 action_type, undo_da_n, *details = last_action
-
-                if action_type == 'skip_image' or action_type == 'Next':
+                print(action_type)
+                if action_type == 'skip_image':
                     # 撤回跳过图片的操作
                     ori_data_stat[undo_da_n]['status'] = 'unprocessed' if action_type == 'skip_image' else 'selected'
                     ori_data_stat['processed_mask_results'] -= details[0]
-
-                elif action_type == 'select_level':
-                    # 撤回选择级别的操作
-                    ori_data_stat[undo_da_n]['status'] = 'unprocessed'
-                    ori_data_stat[undo_da_n]['level'] = None
-                    # 返回 `select_level` 界面
-                    return redirect(url_for('select_level', username=username, subset_id=subset_id, da_n=undo_da_n))
-                elif action_type == 'keep':
-                    # 撤回“保留”操作
-                    new_data[undo_da_n]['instances']['mask_path'].pop()
-                    ori_data_stat[undo_da_n]['processed_masks'].remove(details[0])
+                elif action_type == 'keep' or action_type =='skip':
+                    ori_data_stat[undo_da_n]['status'] = 'mask'
+                    level = details[0] #str
+                    if action_type=='keep':
+                        new_data[undo_da_n]['instances']['mask_path'].pop()
+                    ori_data_stat[undo_da_n]['processed_masks'][level].pop()
                     ori_data_stat['processed_mask_results'] -= 1
-                    ori_data_stat[undo_da_n]['status'] = 'selected'
+                elif action_type =='discard-all':
+                    undo_level,undo_process_num = details[0],details[1]
+                    ori_data_stat[undo_da_n]['status'] = 'level'
+                    ori_data_stat['processed_mask_results'] -= undo_process_num
+                    ori_data_stat[da_n]['cur_level'] = undo_level
 
-                elif action_type == 'skip':
-                    # 撤回“跳过”操作
-                    ori_data_stat[undo_da_n]['processed_masks'].remove(details[0])
-                    ori_data_stat['processed_mask_results'] -= 1
-                    ori_data_stat[undo_da_n]['status'] = 'selected'
 
+            return redirect(url_for('inner_select_single', username=username, subset_id=subset_id, da_n=undo_da_n))
 
         elif action == 'logout':
             # 登出用户并重定向到登录页面
             return redirect(url_for('logout', username=username))  # 重定向到登录页面
 
-
         elif action == 'go_to_main':
-
             # 在返回主页时先更新所有用户的贡献
             return redirect(url_for('select_subset',username=username))
 
         elif selected_level:
             # 用户选择了一个分割级别
             selected_level = int(selected_level)
-            ori_data_stat[da_n]['status'] = 'selected'
-            ori_data_stat[da_n]['level'] = selected_level
-            undo_stack.append(('select_level', da_n, selected_level))
+            ori_data_stat[da_n]['status'] = 'level'
+            ori_data_stat[da_n]['cur_level'] = selected_level
+
 
         # 保存状态
         save_json_data(ori_data_stat, subset_data['paths']['ori_data_stat'])
         save_undo_stack(undo_stack, subset_data['paths']['undo_stack'])
 
         # 重定向到内部处理逻辑页面
-        return redirect(url_for('inner_select', username=username, subset_id=subset_id))
-
+        return redirect(url_for('inner_select_single', username=username, subset_id=subset_id,da_n=da_n))
+    subset_data = global_data[subset_id]
+    data = subset_data['data']
+    ori_data_stat = subset_data['ori_data_stat']
+    undo_stack = subset_data['undo_stack']
+    num_dict = subset_data['num_dict']
     # 准备渲染数据
     directory = subset_data['paths']['ori_data_stat'].rsplit('/', 1)[0]
     level_images = {
@@ -780,7 +912,7 @@ def select_level(username, subset_id, da_n):
         img = resize_to_match(img, target_size)  # 调整为原图尺寸
         # 将处理后的图像转换为字节流
         processed_images[level] = image_to_bytes(img)
-
+    ori_data_stat[da_n]['max_level'] = len(level_images)-1
     # 计算进度百分比
     progress_stat = get_progress_stat()
     progress = "{:.2f}".format(
@@ -804,9 +936,78 @@ def select_level(username, subset_id, da_n):
         disable_undo=disable_undo
     )
 
+@app.route('/select_mask/<username>/<subset_id>/<da_n>/<level>', methods=['GET', 'POST'])
+def select_mask(username, subset_id, da_n, level):
+    global global_data
+    if request.method == 'POST':
+        # 获取子集数据
+        subset_data = global_data[subset_id]
+        ori_data_stat = subset_data['ori_data_stat']
+        undo_stack = subset_data['undo_stack']
 
-@app.route('/filter/<username>/<subset_id>/<da_n>/<mask_id>/<level>', methods=['GET', 'POST'])
-def filter(username, subset_id, da_n, mask_id, level):
+        selected_mask_ids = request.form.get('selected_mask_ids')
+        print(f'selected_mask_ids:{selected_mask_ids}')
+        selected_mask_ids = json.loads(selected_mask_ids)  # 解析JSON
+
+
+
+        # 更新整个 selected_masks 字典
+        ori_data_stat[da_n]['selected_masks'] = selected_mask_ids
+
+        # 获取决策按钮的值
+        decision = request.form.get('decision', '')
+        if decision == 'Next':
+            selected_num = sum(len(v) for k,v in selected_mask_ids.items())
+            process_num = sum(subset_data['num_dict'][da_n].values()) - selected_num
+            ori_data_stat['processed_mask_results'] += process_num
+            if selected_num >0:#move on to label filter
+                ori_data_stat[da_n]['status'] = 'mask'
+            else: #skip to next case but allow undo
+                ori_data_stat[da_n]['status'] = 'completed'
+                undo_stack.append(('discard-all',da_n,level,process_num))
+
+        elif decision == 'Back':
+            ori_data_stat[da_n]['status'] = 'unprocessed'
+
+        save_json_data(ori_data_stat, subset_data['paths']['ori_data_stat'])
+        return redirect(url_for('inner_select_single', username=username, subset_id=subset_id,da_n=da_n))
+
+    # 获取子集数据渲染网页
+    subset_data = global_data[subset_id]
+    data = subset_data['data']
+    ori_data_stat = subset_data['ori_data_stat']
+
+
+    progress_stat = get_progress_stat()
+    progress = "{:.2f}".format(
+        (ori_data_stat['processed_mask_results'] / ori_data_stat['total_mask_results']) * 100
+    )
+    progress_stat[subset_id]['progress'] = float(progress)
+    save_progress_stat(progress_stat)
+    level = int(level)
+    # 获取当前level的所有掩码信息
+    instance_info = filter_instance(data, da_n, level)
+    print(f"max_Level:{ori_data_stat[da_n]['max_level']}")
+    if len(ori_data_stat[da_n]['selected_masks']) ==0:
+        for lvl in range(1,ori_data_stat[da_n]['max_level']+1):
+            ori_data_stat[da_n]['selected_masks'][str(lvl)] = []
+    print(f"init selection:{ori_data_stat[da_n]['selected_masks']}")
+    save_json_data(ori_data_stat, subset_data['paths']['ori_data_stat'])
+    # 渲染模板并传递数据
+    return render_template(
+        'mask_filter_flatten.html',
+        username=username,
+        subset_id=subset_id,
+        ori_img=instance_info['ori_img'],
+        crop_images=instance_info['crop_images'],
+        progress=progress,
+        selected_masks=ori_data_stat[da_n]['selected_masks'],
+        level=level,  # 将当前 level 传递给前端
+    )
+
+
+@app.route('/filter/<username>/<subset_id>/<da_n>/<level>/<mask_id>', methods=['GET', 'POST'])
+def select_label(username, subset_id, da_n, level,mask_id):
     global global_data
 
     if request.method == 'POST':
@@ -816,83 +1017,77 @@ def filter(username, subset_id, da_n, mask_id, level):
         ori_data_stat = subset_data['ori_data_stat']
         undo_stack = subset_data['undo_stack']
         new_data = subset_data['new_data']
-        num_dict = subset_data['num_dict']
-        level = int(level)
+        mask_id = int(mask_id)
         decision = request.form['decision']
 
+        # 获取最终标签
         if decision == 'keep':
-            # 保留该 mask 结果到 new_data
             if da_n not in new_data:
-                new_data[da_n] = {'instances': {'mask_path': []}}
+                new_data[da_n] = {'instances': {'mask_path': [], 'obj_label': []}}
+            # 保留
             new_data[da_n]['instances']['mask_path'].append(
-                data[da_n]['instances'][level - 1]['mask_path'][int(mask_id)]
+                data[da_n]['instances'][int(level) - 1]['mask_path'][mask_id]
+            )
+            new_data[da_n]['instances']['obj_label'].append(
+                data[da_n]['instances'][int(level) - 1]['obj_label'][mask_id]
             )
 
             # 更新处理状态
-            ori_data_stat[da_n]['processed_masks'].append(mask_id)
+            ori_data_stat[da_n]['processed_masks'][level].append(mask_id)
             ori_data_stat['processed_mask_results'] += 1
-            if len(ori_data_stat[da_n]['processed_masks']) == sum(subset_data['num_dict'][da_n].values()):
+            # print(ori_data_stat[da_n]['selected_masks'])
+            # print(ori_data_stat[da_n]['processed_masks'])
+            if sum(len(v) for k,v in ori_data_stat[da_n]['processed_masks'].items()) == sum(len(v) for k, v in ori_data_stat[da_n]['selected_masks'].items()):
                 ori_data_stat[da_n]['status'] = 'completed'
-            undo_stack.append(('keep', da_n, mask_id))
+            undo_stack.append(('keep',da_n,level,mask_id))
 
         elif decision == 'skip':
-            # 跳过当前 mask
-            ori_data_stat[da_n]['processed_masks'].append(mask_id)
+            # 跳过
+            ori_data_stat[da_n]['processed_masks'][level].append(mask_id)
             ori_data_stat['processed_mask_results'] += 1
-            if len(ori_data_stat[da_n]['processed_masks']) == sum(subset_data['num_dict'][da_n].values()):
+            if sum(len(v) for k,v in ori_data_stat[da_n]['processed_masks'].items()) == sum(len(v) for k, v in ori_data_stat[da_n]['selected_masks'].items()):
                 ori_data_stat[da_n]['status'] = 'completed'
-            undo_stack.append(('skip', da_n, mask_id))
-
-        elif decision == 'Next':
-            # 跳过剩余所有
-            print(f'decision: Next')
-            total_edits_in_image = sum(num_dict[da_n].values())
-            already_process_image = len(ori_data_stat[da_n]['processed_masks'])
-            process_ins_num = total_edits_in_image - already_process_image
-            ori_data_stat[da_n]['status'] = 'completed'
-            ori_data_stat['processed_mask_results'] += process_ins_num
-            undo_stack.append(('Next', da_n,  process_ins_num))
+            undo_stack.append(('skip',da_n,level,mask_id))
 
         elif decision == 'undo':
+            ori_data_stat[da_n]['status'] = 'mask'
             if undo_stack:
-                last_action = undo_stack.pop()
-                action_type, undo_da_n, undo_mask_id = last_action
+                last_action,_,_,_ = undo_stack.pop()
+                action_type = last_action
 
                 if action_type == 'keep':
                     # 撤回“保留”操作
-                    new_data[undo_da_n]['instances']['mask_path'].pop()
-                    ori_data_stat[undo_da_n]['processed_masks'].remove(undo_mask_id)
+                    new_data[da_n]['instances']['mask_path'].pop()
+                    ori_data_stat[da_n]['processed_masks'][level].pop()
                     ori_data_stat['processed_mask_results'] -= 1
 
                 elif action_type == 'skip':
                     # 撤回“跳过”操作
-                    ori_data_stat[undo_da_n]['processed_masks'].remove(undo_mask_id)
+                    ori_data_stat[da_n]['processed_masks'][level].pop()
                     ori_data_stat['processed_mask_results'] -= 1
 
-                # 恢复状态为“unprocessed”，如果撤销了所有处理
-                if not ori_data_stat[undo_da_n]['processed_masks']:
-                    ori_data_stat[undo_da_n]['status'] = 'selected'
 
-        elif decision == 'undo_level_select':
-            # 撤销当前 level 的所有处理
-            processed_masks = ori_data_stat[da_n]['processed_masks']
-            undo_count = len(processed_masks)
-            ori_data_stat['processed_mask_results'] -= undo_count
-            ori_data_stat[da_n]['processed_masks'] = []
-            ori_data_stat[da_n]['status'] = 'unprocessed'
-            ori_data_stat[da_n]['level'] = None
+        elif decision == 'Back':
+            #回溯
+            ori_data_stat[da_n]['processed_masks']={}
+            if da_n in new_data:
+                del new_data[da_n]
 
-            # 清空撤销栈中相关记录
-            undo_stack[:] = [
-                action for action in undo_stack if action[1] != da_n
-            ]
+            ori_data_stat[da_n]['status'] = 'level'
+            # 回溯undo_stack，直到遇到与da_n不同的操作
+            label_process_num = 0
+            while undo_stack and undo_stack[-1][1] == da_n:
+                label_process_num+=1
+                undo_stack.pop()
+            mask_process_num = sum(subset_data['num_dict'][da_n].values()) - sum(len(v) for k, v in ori_data_stat[da_n]['selected_masks'].items())
+            ori_data_stat['processed_mask_results'] -= (label_process_num+mask_process_num)
 
         # 保存更新后的状态
         save_json_data(new_data, subset_data['paths']['new_data'])
         save_json_data(ori_data_stat, subset_data['paths']['ori_data_stat'])
         save_undo_stack(undo_stack, subset_data['paths']['undo_stack'])
 
-        return redirect(url_for('inner_select', username=username, subset_id=subset_id))
+        return redirect(url_for('inner_select_single', username=username, subset_id=subset_id,da_n=da_n))
 
     # 获取子集数据
     subset_data = global_data[subset_id]
@@ -901,6 +1096,7 @@ def filter(username, subset_id, da_n, mask_id, level):
     undo_stack = subset_data['undo_stack']
 
     level = int(level)
+    mask_id = int(mask_id)
     progress_stat = get_progress_stat()
     # 计算进度百分比
     progress = "{:.2f}".format(
@@ -910,23 +1106,19 @@ def filter(username, subset_id, da_n, mask_id, level):
     save_progress_stat(progress_stat)
 
     # 获取 mask 实例信息
-    instance_info = filter_instance(data, da_n, mask_id, level)
-
-    # 动态更新按钮状态
-    disable_skip_image = False  # 动态设置
-    # 检查撤回栈顶部操作类型，只有类型为 keep 或 skip 时才启用撤销按钮
-    disable_undo_last_action = not (undo_stack and undo_stack[-1][0] in ['keep', 'skip'])
+    instance_info = filter_instance_label(data,ori_data_stat, da_n, level, mask_id)
+    # 检查是否禁用撤回按钮
+    disable_undo = len(undo_stack)== 0 or undo_stack[-1][1] != da_n
 
     # 渲染模板，并传递所需数据
     return render_template(
-        'mask_filter_plus.html',
+        'label_select.html',
         username=username,
         subset_id=subset_id,
         instance=instance_info,
         progress=progress,
-        undo_stack=undo_stack[-20:],  # 只传递后 N 条记录
-        disable_skip_image=disable_skip_image,
-        disable_undo_last_action=disable_undo_last_action
+        disable_undo = disable_undo,
+        undo_stack=undo_stack[-20:]
     )
 
 def get_progress_stat():
