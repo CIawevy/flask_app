@@ -9,8 +9,10 @@ import secrets
 from flask_session import Session  # 新增
 from flask import g  # 新增
 import  time
+from typing import  List
 from io import BytesIO
 import os
+import re
 from tqdm import tqdm
 import requests
 import time
@@ -87,6 +89,7 @@ def translate(keywords, target_language):
     if response.status_code == 200:
         result = response.json()  # 解析返回的 JSON 数据
 
+
         # 判断翻译是否成功
         if result.get("code") == 1:
             # 翻译成功，返回翻译后的文本
@@ -103,7 +106,7 @@ app.secret_key = secrets.token_hex(16)
 app.config.update(
     SESSION_TYPE='filesystem',
     SESSION_PERMANENT=True,
-    SESSION_FILE_DIR='./flask_session/',
+    SESSION_FILE_DIR='/data/Hszhu/dataset/flask_session/',
     SESSION_USE_SIGNER=True,
     SECRET_KEY='your_secret_key_here',
 )
@@ -329,7 +332,7 @@ def initialize_subset_data(subset_path, subset_id):
     :return: 初始化的子集数据结构
     """
     # 动态加载或创建数据文件
-    data_path = os.path.join(subset_path, f"mask_tag_relabelled_lmm_{subset_id}.json")
+    data_path = os.path.join(subset_path, f"mask_tag_relabelled_lmm_v2_{subset_id}.json")
     ori_data_stat_path = os.path.join(subset_path, "ssm_ram_stat.json")
     undo_stack_path = os.path.join(subset_path, "ssm_ram_undo_stack.json")
     new_data_path = os.path.join(subset_path, "ssm_ram_edit_data.json")
@@ -623,6 +626,14 @@ def combine_with_transparent_background(original_img, mask_img_colored, alpha=0.
     combined_img = Image.alpha_composite(original_transparent, mask_img_colored)
     return combined_img
 
+def normalize_labels(label_str):
+    """
+    将翻译结果中的所有可能的分隔符（如逗号、顿号等）统一转换为一个标准分隔符（如|），
+    并返回标准化后的字符串。
+    """
+    # 将逗号、顿号和其他可能的分隔符统一替换为 |
+    label_str = re.sub(r'[, ，、；：\n]', '|', label_str)  # 可根据实际需要调整正则表达式
+    return label_str
 def filter_instance_label(data, ori_data_stat, da_n,level,mask_id):
     # 获取原图路径和用户选择的掩码信息
     src_img_path = data[da_n]['src_img_path']
@@ -634,10 +645,22 @@ def filter_instance_label(data, ori_data_stat, da_n,level,mask_id):
 
     mask_path = data[da_n]['instances'][int(level) - 1]['mask_path'][int(mask_id)]
     ori_label = data[da_n]['instances'][int(level) - 1]['obj_label'][int(mask_id)]
+    if not isinstance(ori_label, List):
+        ori_label = [ori_label]
+    # 将 ori_label 转换为英文逗号分隔的字符串
+    label_str = ",".join(ori_label)
     try:
-        chinese_label = translate(ori_label,'zh-CHS')
+        chinese_label_str = translate(label_str, 'zh-CHS')  # 翻译逗号分隔的字符串
+        # print(chinese_label_str)
+        # 将翻译后的字符串按逗号分割，恢复为列表
+        # 将翻译后的字符串中的所有分隔符统一替换为标准符号（例如|）
+        chinese_label_str = normalize_labels(chinese_label_str)
+
+        # 根据标准符号分割翻译结果
+        chinese_labels = chinese_label_str.split('|')
+        # print(chinese_labels)
     except (requests.exceptions.RequestException, ValueError) as e:
-        chinese_label = "API ERROR"
+        chinese_labels = ["API ERROR"] * len(ori_label)
         print(f"Translation error: {e}")
     # 获取掩码图像
     mask_img = Image.open(mask_path).convert("L")
@@ -655,7 +678,7 @@ def filter_instance_label(data, ori_data_stat, da_n,level,mask_id):
         'ori_img': image_to_bytes(ori_img),  # 原图
         'crop_img': image_to_bytes(crop_img),  # 所有掩码图像
         'label': ori_label,  #label
-        'chinese_label':chinese_label
+        'chinese_labels':chinese_labels
     }
 
 def filter_instance(data, da_n, level):
@@ -761,7 +784,7 @@ def inner_init(username, subset_id):
 
     if subset_id not in global_data:
         # 加载或初始化子集数据
-        json_path = os.path.join(directory, f"mask_tag_relabelled_lmm_{subset_id}.json")
+        json_path = os.path.join(directory, f"mask_tag_relabelled_lmm_v2_{subset_id}.json")
         new_data_path = os.path.join(directory, f'ssm_ram_edit_data.json')
         undo_stack_path = os.path.join(directory, 'ssm_ram_undo_stack.json')
         ori_data_stat_path = os.path.join(directory, 'ssm_ram_stat.json')
@@ -1021,17 +1044,23 @@ def select_label(username, subset_id, da_n, level,mask_id):
 
         # 获取最终标签
         if decision == 'keep':
+            # 获取用户选择的标签ID（这个值是从前端传递过来的）
+            selected_label_id = int(request.form['selected_label_id'])  # 获取选择的标签ID
+            print(selected_label_id)
             if da_n not in new_data:
                 new_data[da_n] = {'instances': {'mask_path': [], 'obj_label': []}}
             # 保留
             new_data[da_n]['instances']['mask_path'].append(
                 data[da_n]['instances'][int(level) - 1]['mask_path'][mask_id]
             )
+            print(data[da_n]['instances'][int(level) - 1]['obj_label'][mask_id][selected_label_id])
             new_data[da_n]['instances']['obj_label'].append(
-                data[da_n]['instances'][int(level) - 1]['obj_label'][mask_id]
+                data[da_n]['instances'][int(level) - 1]['obj_label'][mask_id][selected_label_id]
             )
 
             # 更新处理状态
+            print(level)
+            print(ori_data_stat[da_n]['processed_masks'])
             ori_data_stat[da_n]['processed_masks'][level].append(mask_id)
             ori_data_stat['processed_mask_results'] += 1
             # print(ori_data_stat[da_n]['selected_masks'])
@@ -1051,18 +1080,19 @@ def select_label(username, subset_id, da_n, level,mask_id):
         elif decision == 'undo':
             ori_data_stat[da_n]['status'] = 'mask'
             if undo_stack:
-                last_action,_,_,_ = undo_stack.pop()
+                last_action,undo_da_n,undo_level,undo_mask_id = undo_stack.pop()
                 action_type = last_action
 
                 if action_type == 'keep':
                     # 撤回“保留”操作
-                    new_data[da_n]['instances']['mask_path'].pop()
-                    ori_data_stat[da_n]['processed_masks'][level].pop()
+                    new_data[undo_da_n]['instances']['mask_path'].pop()
+                    new_data[undo_da_n]['instances']['obj_label'].pop()
+                    ori_data_stat[undo_da_n]['processed_masks'][undo_level].pop()
                     ori_data_stat['processed_mask_results'] -= 1
 
                 elif action_type == 'skip':
                     # 撤回“跳过”操作
-                    ori_data_stat[da_n]['processed_masks'][level].pop()
+                    ori_data_stat[undo_da_n]['processed_masks'][undo_level].pop()
                     ori_data_stat['processed_mask_results'] -= 1
 
 
@@ -1108,10 +1138,10 @@ def select_label(username, subset_id, da_n, level,mask_id):
     instance_info = filter_instance_label(data,ori_data_stat, da_n, level, mask_id)
     # 检查是否禁用撤回按钮
     disable_undo = len(undo_stack)== 0 or undo_stack[-1][1] != da_n
-
+    # print(f'undo_stack last:{undo_stack[-1]}')
     # 渲染模板，并传递所需数据
     return render_template(
-        'label_select.html',
+        'label_select_plus.html',
         username=username,
         subset_id=subset_id,
         instance=instance_info,

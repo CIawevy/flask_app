@@ -202,7 +202,9 @@
         // 打印 selectedMasks 和 selectedMaskIdsInput 元素，确保它们初始化正确
         console.log('selectedMasks (initial):', selectedMasks);  // 输出初始的 selectedMasks 数据
         console.log('selectedMaskIdsInput (element):', selectedMaskIdsInput);  // 查看 input 元素
-
+        function toggleZoom(imgElement) {
+                imgElement.classList.toggle('expanded'); // 切换 'expanded' 类，进行放大或恢复
+            }
         // 切换掩码选择的选中状态
         function toggleSelection(maskId) {
             const button = document.getElementById('mask_' + maskId);

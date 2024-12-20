@@ -92,6 +92,7 @@ def translate(keywords, target_language):
 
 # 示例使用
 if __name__ == "__main__":
-    # translated_text = translate("cat", "zh-CHS")  # 翻译 "hello" 到德语
+    # translated_text = translate("cat", "zh-CHS")
     # print(translated_text)  # 打印翻译结果
-    print({})
+    # print({})
+    translate_youdao("cat")
