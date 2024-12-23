@@ -3,7 +3,7 @@ import cv2
 import json
 import argparse
 from tqdm import tqdm
-from flask import Flask, render_template, request, redirect, url_for, send_file, session
+from flask_app import Flask, render_template, request, redirect, url_for, send_file, session
 import os.path as osp
 import secrets
 app = Flask(__name__)

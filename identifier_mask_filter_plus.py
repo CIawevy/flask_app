@@ -8,11 +8,11 @@ import random
 from fontTools.subset import subset
 from numba.tests.inlining_usecases import inner
 from tqdm import tqdm
-from flask import Flask, render_template, request, redirect, url_for, send_file, session
+from flask_app import Flask, render_template, request, redirect, url_for, send_file, session
 import os.path as osp
 import secrets
 from flask_session import Session  # 新增
-from flask import g  # 新增
+from flask_app import g  # 新增
 import  time
 from io import BytesIO
 import os

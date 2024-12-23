@@ -35,7 +35,7 @@ flask/
 ## 使用引导
 
    ```bash
-   pip install flask,flask_session,tqdm,Pillow
+   pip install flask_app,flask_session,tqdm,Pillow
   
   # 新增
    ```

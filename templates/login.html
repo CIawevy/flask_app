@@ -30,7 +30,7 @@
             font-size: 1.2rem;
             color: #495057;
         }
-        input[type="text"] {
+        input[type="text"], input[type="password"] {
             font-size: 1.2rem;
             padding: 10px;
             margin: 15px 0;
@@ -38,6 +38,14 @@
             max-width: 300px;
             border: 1px solid #ced4da;
             border-radius: 5px;
+        }
+        input[type="text"].is-invalid, input[type="password"].is-invalid {
+            border-color: #dc3545;  /* 红色边框 */
+        }
+        .invalid-feedback {
+            display: block;
+            color: #dc3545;
+            font-size: 0.9rem;
         }
         button {
             font-size: 1.2rem;
@@ -74,6 +82,15 @@
         <form method="POST">
             <label for="username">Username:</label><br>
             <input type="text" id="username" name="username" placeholder="Enter your username" required><br>
+
+            <label for="password">Password:</label><br>
+            <input type="password" id="password" name="password" placeholder="Enter your password" required
+                class="{% if get_flashed_messages() %}is-invalid{% endif %}"><br>
+
+            {% for message in get_flashed_messages() %}
+                <div class="invalid-feedback">{{ message }}</div>
+            {% endfor %}
+
             <button type="submit">Login</button>
         </form>
     </div>
