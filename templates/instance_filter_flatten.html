@@ -187,10 +187,17 @@
             <p>Masked Image</p>
         </div>
 
-        {% for edit_img in edit_imgs %}
+<!--        {% for edit_img in edit_imgs %}-->
+<!--        <div style="text-align: center;">-->
+<!--            <img src="data:image/png;base64,{{ edit_img | b64encode }}" alt="Edit Image" class="zoomable" ondblclick="toggleZoom(this)">-->
+<!--            <p>Result {{ loop.index }}</p>-->
+<!--            <button type="button" id="mask_{{ loop.index }}" class="select-button" onclick="toggleSelection('{{ loop.index }}')">丢弃 (Discard)</button>-->
+<!--        </div>-->
+<!--        {% endfor %}-->
+        {% for item in edit_imgs_with_labels %}
         <div style="text-align: center;">
-            <img src="data:image/png;base64,{{ edit_img | b64encode }}" alt="Edit Image" class="zoomable" ondblclick="toggleZoom(this)">
-            <p>Result {{ loop.index }}</p>
+            <img src="data:image/png;base64,{{ item[0] | b64encode }}" alt="Edit Image" class="zoomable" ondblclick="toggleZoom(this)">
+            <p>{{ item[1] }}</p> <!-- 使用标签替换了Result {{ loop.index }} -->
             <button type="button" id="mask_{{ loop.index }}" class="select-button" onclick="toggleSelection('{{ loop.index }}')">丢弃 (Discard)</button>
         </div>
         {% endfor %}

@@ -636,7 +636,59 @@ def normalize_labels(label_str):
     # 将逗号、顿号和其他可能的分隔符统一替换为 |
     label_str = re.sub(r'[, ，、；：\n]', '|', label_str)  # 可根据实际需要调整正则表达式
     return label_str
+# 方向词和标记词列表
+direction_words = [
+    "upward", "downward", "leftward", "rightward",
+    "upper-left", "upper-right", "lower-left", "lower-right",
+    "around", "uniformly"
+]
+# 编译正则表达式，用于匹配操作词、方向词和程度词
+operation_words = ["Move", "Shift", "Slide", "Drag", "Rotate", "Spin", "Turn", "Swivel",
+                   "Enlarge", "Expand", "zoom", "amplify", "Shrink", "Contract"]
+degree_words = ["lightly", "slightly", "gently", "mildly", "moderately",
+                "markedly", "appreciably", "heavily", "intensely", "significantly", "strongly"]
+operation_mapping = {
+    "Move": "Move", "Slide": "Move", "Shift": "Move", "Drag": "Move",
+    "Rotate": "Rotate", "Spin": "Rotate", "Turn": "Rotate", "Swivel": "Rotate",
+    "Enlarge": "Enlarge", "Expand": "Enlarge", "zoom": "Enlarge", "amplify": "Enlarge",
+    "Shrink": "Shrink", "Contract": "Shrink"
+}
+# 创建方向词映射
+direction_mapping = {
+    "upward": "up", "downward": "down", "leftward": "left", "rightward": "right",
+    "upper-left": "up-left", "upper-right": "up-right", "lower-left": "down-left", "lower-right": "down-right",
+    "uniformly": "",
+    'around the':"",
+}
+# 汇总所有需要去除的词
+all_removal_words =  degree_words
+removal_pattern = re.compile(r'\b(?:' + '|'.join(map(re.escape, all_removal_words)) + r')\b', re.IGNORECASE)
+def shorten_prompt(prompt, obj_name=None):
+    """
+    简化 prompt 中的内容，去除对象名称和方向词等冗余内容，优化显示。
+    """
+    # Step 1: 特别处理 "around the"
+    prompt = re.sub(r'\baround\s+the\b', '', prompt, flags=re.IGNORECASE)
 
+    # Step 2: 移除 "the obj_name" 如果 obj_name 被提供
+    if obj_name:
+        prompt = re.sub(rf'\bthe\s+{re.escape(obj_name)}\b', '', prompt, flags=re.IGNORECASE)
+
+    # Step 3: 移除其他指定的程度词
+    prompt = removal_pattern.sub('', prompt)
+
+    # Step 4: 替换操作词为统一形式
+    for operation, unified_operation in operation_mapping.items():
+        prompt = re.sub(r'\b' + re.escape(operation) + r'\b', unified_operation, prompt, flags=re.IGNORECASE)
+
+    # Step 5: 替换方向词为统一形式
+    for direction, unified_direction in direction_mapping.items():
+        prompt = re.sub(r'\b' + re.escape(direction) + r'\b', unified_direction, prompt, flags=re.IGNORECASE)
+
+    # Step 6: 清理多余空格
+    prompt = re.sub(r'\s+', ' ', prompt).strip()
+
+    return prompt
 
 def filter_instance_final(data, da_n, ins_n):
     # 获取原图路径和实例信息
@@ -656,14 +708,17 @@ def filter_instance_final(data, da_n, ins_n):
     crop_img = Image.composite(ori_img, white_background, mask_img)  # 保留掩码区域
 
     edit_results=[]
+    labels = []
     for edit_id, meta in instances.items():
         edit_results.append(image_to_bytes( Image.open(meta['gen_img_path']).convert("RGBA")))
+        labels.append(shorten_prompt(meta['edit_prompt'],meta['obj_label']))
     # print(f'length of edit results is {len(edit_results)}')
     # 返回数据
     return {
         'ori_img': image_to_bytes(ori_img),  # 原图
         'mask_img': image_to_bytes(crop_img),  #掩码图
-        'edit_imgs':edit_results #所有编辑结果
+        'edit_imgs':edit_results, #所有编辑结果
+        'labels':labels,
 
     }
 # 动态加载图片的路由
@@ -731,7 +786,7 @@ def inner_select_single(username, subset_id,da_n):
     data = subset_data['data']
     ori_data_stat = subset_data['ori_data_stat']
     for ins_n, ins in data[da_n]['instances'].items():
-        if ins_n in ori_data_stat[da_n]['processed_ins']:
+        if ins_n in ori_data_stat[da_n]['processed_ins'] or len(ins)==0:
             continue
         return redirect(url_for('select_instance_results', username=username, subset_id=subset_id,da_n=da_n,ins_n=ins_n))
     ori_data_stat[da_n]['status'] = 'completed'
@@ -776,6 +831,7 @@ def select_instance_results(username, subset_id, da_n,ins_n):
             discard_ids = json.loads(discard_ids)  # 解析JSON
             if da_n not in new_data:
                 new_data[da_n] = {'instances':{}}
+            if ins_n not in new_data[da_n]['instances']:
                 new_data[da_n]['instances'][ins_n]={}
             new_data[da_n]['instances'][ins_n].update(data[da_n]['instances'][ins_n])
             for edit_id in discard_ids:
@@ -809,7 +865,7 @@ def select_instance_results(username, subset_id, da_n,ins_n):
                     save_undo_stack(undo_stack, subset_data['paths']['undo_stack'])
                     return redirect(url_for('inner_select_single', username=username, subset_id=subset_id, da_n=undo_da_n))
                 elif action_type =='Next':
-                    del new_data[undo_da_n][undo_ins_n]
+                    del new_data[undo_da_n]['instances'][undo_ins_n]
                     ori_data_stat[undo_da_n]['processed_ins'].pop()
                     ori_data_stat['total_processed_results'] -= pro_num
                     save_json_data(new_data, subset_data['paths']['new_data'])
@@ -831,18 +887,31 @@ def select_instance_results(username, subset_id, da_n,ins_n):
     save_progress_stat(progress_stat)
     # 获取当前instance的所有信息
     instance_info = filter_instance_final(data, da_n, ins_n)
-    disable_skip_image = True
     # 渲染模板并传递数据
+    # return render_template(
+    #     'instance_filter_flatten.html',
+    #     username=username,
+    #     subset_id=subset_id,
+    #     ori_img=instance_info['ori_img'],
+    #     mask_img = instance_info['mask_img'],
+    #     edit_imgs=instance_info['edit_imgs'],
+    #     labels = instance_info['labels'],
+    #     progress=progress,
+    #     disable_undo = len(undo_stack) == 0,
+    #     disable_skip_image = len(ori_data_stat[da_n]['processed_ins']) != 0,
+    # )
+    # 修改为以下方式，将edit_imgs和labels组合在一起
+    edit_imgs_with_labels = list(zip(instance_info['edit_imgs'], instance_info['labels']))
     return render_template(
         'instance_filter_flatten.html',
         username=username,
         subset_id=subset_id,
         ori_img=instance_info['ori_img'],
-        mask_img = instance_info['mask_img'],
-        edit_imgs=instance_info['edit_imgs'],
+        mask_img=instance_info['mask_img'],
+        edit_imgs_with_labels=edit_imgs_with_labels,  # 传递组合后的列表
         progress=progress,
-        disable_undo = len(undo_stack) == 0,
-        disable_skip_image = len(ori_data_stat[da_n]['processed_ins']) != 0,
+        disable_undo=len(undo_stack) == 0,
+        disable_skip_image=len(ori_data_stat[da_n]['processed_ins']) != 0,
     )
 
 
